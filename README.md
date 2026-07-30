@@ -67,3 +67,15 @@ python src/unit1_quickstart.py
 
 Downloads FashionMNIST to `data/`, trains a small MLP for 5 epochs,
 saves weights to `model.pth`, then reloads them for one prediction.
+
+## Day-to-day workflow between machines
+
+Before starting work on either machine:
+'''bash
+git pull
+'''
+
+After making changes:
+'''bash
+git add -A && git commit -m "..." && git push
+'''
