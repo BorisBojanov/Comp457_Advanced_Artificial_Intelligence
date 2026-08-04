@@ -1,0 +1,12 @@
+name: Comp457
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - jupyterlab
+  - numpy
+  - matplotlib
+  - pip
+# PyTorch installs separately per platform — see README.
+# (torch/torchvision are intentionally NOT listed here because the Windows
+# CUDA build needs a different pip index URL than the Mac build.)

@@ -1,7 +1,8 @@
-# Virtual environments
+# Virtual environments (pip venv or conda envs stored inside the repo)
 .venv/
 venv/
 env/
+envs/
 
 # Python bytecode
 __pycache__/

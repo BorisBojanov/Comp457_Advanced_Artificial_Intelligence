@@ -1,4 +1,0 @@
-# Shared dependencies (torch/torchvision installed separately — see README)
-jupyterlab
-numpy
-matplotlib
