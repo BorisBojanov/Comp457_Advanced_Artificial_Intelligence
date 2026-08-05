@@ -7,6 +7,19 @@ dependencies:
   - numpy
   - matplotlib
   - pip
-# PyTorch installs separately per platform — see README.
-# (torch/torchvision are intentionally NOT listed here because the Windows
-# CUDA build needs a different pip index URL than the Mac build.)
+  # PyTorch comes from conda-forge, NOT pip, so that it shares this
+  # environment's single OpenMP runtime. The pip wheel bundles its own
+  # copy of libomp; loading that alongside conda-forge numpy's libomp
+  # aborts on `import torch` with "OMP: Error #15". See README
+  # "Troubleshooting".
+  #
+  # conda-forge selects the accelerator build per platform:
+  #   macOS arm64 -> cpu_generic_* build, MPS compiled in
+  #   Windows     -> cpu_* or cuda126/cuda128/cuda130 builds; confirm a
+  #                  CUDA build was chosen (README step 3)
+  #
+  # Pinned because an unpinned solve on osx-arm64 settles on 2.10.0 even
+  # though 2.13.0 has py312 builds. torchvision is left unpinned so the
+  # solver pairs a compatible release.
+  - pytorch=2.13.0
+  - torchvision
