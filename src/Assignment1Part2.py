@@ -93,6 +93,68 @@ def predict(model: NeuralNetwork, x, device: str = "mps"):
         pred = model(x)
         return pred.argmax(1).item()
 
+def problem1(trainAndloadModel: bool = True):
+    device = get_device()
+    print(f"Using device: {device}")
+
+    training_data = datasets.MNIST(
+        root=str(DATA_DIR), train=True, download=True, transform=ToTensor()
+    )
+    test_data = datasets.MNIST(
+        root=str(DATA_DIR), train=False, download=True, transform=ToTensor()
+    )
+    train_loader = DataLoader(training_data, batch_size=BATCH_SIZE)
+    test_loader = DataLoader(test_data, batch_size=BATCH_SIZE)
+
+    model = NeuralNetwork().to(device)
+    print(model)
+
+    loss_fn = nn.CrossEntropyLoss()
+    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
+
+    if trainAndloadModel:
+            # Train and test the model
+        for epoch in range(EPOCHS):
+            print(f"\nEpoch {epoch + 1}/{EPOCHS}")
+            train(train_loader, model, loss_fn, optimizer, device)
+            test(test_loader, model, loss_fn, device)
+
+    # Load the model 
+    # model = NeuralNetwork().to(device)
+    modelLoaded = loadModel(NeuralNetwork(), MODEL_PATH, device)
+
+    classes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+
+    """
+    test_data behaves like a list of tuples
+    test_data[i]          →  a tuple: (image_tensor, label)
+    test_data[i][0]       →  the image tensor  (shape: 1 x 28 x 28)
+    test_data[i][1]       →  the integer label (0 - 9, the actual digit)
+
+    test_data[10][0]
+    [10] — select the 10th sample in the dataset (i.e., which handwritten digit image you're looking at)
+    [0] — take the image tensor from that (index 0 of the tuple), not the label (which would be index [1])
+
+    test_data[10][1]
+    [10] — select the 10th sample in the dataset (i.e., which handwritten digit image you're looking at)
+    [1] — take the label from that (index 1 of the tuple), not the image tensor (which would be index [0])
+    """
+    random_index = torch.randint(len(test_data), size=(1,)).item()
+
+    # x, y = test_data[10][0], test_data[10][1] 
+    x = test_data[1][0] # x = image tensor  (tuple index 0)
+    y = test_data[1][1] # y = label integer (tuple index 1)
+    # print (f'\nPredicted x,y: "{x, y}"  \n')
+    print(test_data[10][1])  # prints the true label integer
+
+    # pred = predict(modelLoaded, x, device) # Cannot just use x by itself
+    pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
+    predicted = classes[pred]
+    actual = classes[y]
+
+    print(f'Predicted: "{predicted}", Actual: "{actual}"')
+
+
 
 
 def main():
@@ -157,7 +219,7 @@ def main():
     pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
     predicted = classes[pred]
     actual = classes[y]
-    
+
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
     # with torch.no_grad():
     #     x = x.to(device)
