@@ -11,6 +11,8 @@ from torch import nn
 from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
+import random
+import matplotlib.pyplot as plot
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
@@ -101,8 +103,14 @@ class CNN(nn.Module):
         x = torch.relu(self.fc1(x))               # → (batch, 128)
         return self.fc2(x)                         # → (batch, 10)
 
-def train(dataloader, model, loss_fn, optimizer, device):
+def plotter():
+    pass
+
+
+def train(dataloader, model, loss_fn: nn.CrossEntropyLoss, optimizer, device):
     size = len(dataloader.dataset)
+    lossEpoch = 0
+    avgTrainingloss = 0.0 # average training loss per epoch
     model.train()
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
@@ -116,7 +124,11 @@ def train(dataloader, model, loss_fn, optimizer, device):
         if batch % 100 == 0:
             current = (batch + 1) * len(X)
             print(f"  loss: {loss.item():>7f}  [{current:>5d}/{size:>5d}]")
+            lossEpoch += loss.item()
 
+    # return: total / len(dataloader)
+    avgTrainingloss = lossEpoch / size
+    return avgTrainingloss
 
 def test(dataloader, model, loss_fn, device):
     size = len(dataloader.dataset)
@@ -132,6 +144,7 @@ def test(dataloader, model, loss_fn, device):
     test_loss /= num_batches
     correct /= size
     print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
+    return correct, test_loss
 
 def saveModel(model, path):
     torch.save(model.state_dict(), path)
@@ -174,13 +187,17 @@ def problem1(trainAndloadModel: bool = True):
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-
+    train_losses, test_losses, test_accs = [], [], []
     if trainAndloadModel:
             # Train and test the model
         for epoch in range(EPOCHS):
             print(f"\nEpoch {epoch + 1}/{EPOCHS}")
-            train(train_loader, model, loss_fn, optimizer, device)
-            test(test_loader, model, loss_fn, device)
+            
+            train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
+            test_accs.append(test(test_loader, model, loss_fn, device)[0])
+            test_losses.append(test(test_loader, model, loss_fn, device)[1])
+
+    
 
     # Load the model 
     # model = NeuralNetwork().to(device)
@@ -202,20 +219,25 @@ def problem1(trainAndloadModel: bool = True):
     [10] — select the 10th sample in the dataset (i.e., which handwritten digit image you're looking at)
     [1] — take the label from that (index 1 of the tuple), not the image tensor (which would be index [0])
     """
-    random_index = torch.randint(len(test_data), size=(1,)).item()
+    random_index = random.randint(0, len(test_data)) 
+    print(f"Length of test data: {len(test_data)} \n Random index: {random_index}")
 
     # x, y = test_data[10][0], test_data[10][1] 
-    x = test_data[1][0] # x = image tensor  (tuple index 0)
-    y = test_data[1][1] # y = label integer (tuple index 1)
+    x = test_data[random_index][0] # x = image tensor  (tuple index 0)
+    y = test_data[random_index][1] # y = label integer (tuple index 1)
     # print (f'\nPredicted x,y: "{x, y}"  \n')
-    print(test_data[10][1])  # prints the true label integer
+    # print(test_data[10][1])  # prints the true label integer
+    testimage = x.permute(1, 2, 0).detach().cpu().numpy()  # shows the image of the handwritten digit
 
     # pred = predict(modelLoaded, x, device) # Cannot just use x by itself
     pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
     predicted = classes[pred]
     actual = classes[y]
-
+    
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
+    print(f'Image {actual} is shown below:')
+    plot.imshow(testimage)
+    plot.show()
     # with torch.no_grad():
     #     x = x.to(device)
     #     pred = modelLoaded(x)
@@ -242,29 +264,40 @@ def problem2(trainAndloadModel: bool = True):
 
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
-    
+    train_losses, test_losses, test_accs = [], [], []
+
     if trainAndloadModel:
             # Train and test the model
         for epoch in range(EPOCHS):
             print(f"\nEpoch {epoch + 1}/{EPOCHS}")
-            train(train_loader, model, loss_fn, optimizer, device)
-            test(test_loader, model, loss_fn, device)
+
+            train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
+            test_accs.append(test(test_loader, model, loss_fn, device)[0])
+            test_losses.append(test(test_loader, model, loss_fn, device)[1])
+
 
     # Load the model 
     # model = NeuralNetwork().to(device)
     modelLoaded = loadModel(NeuralNetwork(), MODEL_PATH, device)
-    random_index = torch.randint(len(test_data), size=(1,)).item() 
+    random_index = random.randint(0, len(test_data)) 
+    print(f"Length of test data: {len(test_data)} \n Random index: {random_index}")
 
     classes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
     # test_data[0 to len(datasets.MNIST)] a tuple: (image_tensor, label)
-    x = test_data[1][0] #test_data[i][0] x = image tensor  (tuple index 0)
-    y = test_data[1][1] #test_data[i][1] y = label integer (tuple index 1)
+    x = test_data[random_index][0] #test_data[i][0] x = image tensor  (tuple index 0)
+    y = test_data[random_index][1] #test_data[i][1] y = label integer (tuple index 1)
+
+    # The image tensor is in the shape (1 x 28 x 28) and needs to be permuted to (28 x 28 x 1) for plotting
+    testimage = x.permute(1, 2, 0).detach().cpu().numpy()  # shows the image of the handwritten digit
 
     pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
     predicted = classes[pred]
     actual = classes[y]
-
+    
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
+    print(f'Image {actual} is shown below:')
+    plot.imshow(testimage)
+    plot.show()
 
 
 
