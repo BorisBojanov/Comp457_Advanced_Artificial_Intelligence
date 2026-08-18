@@ -29,6 +29,8 @@ def get_device() -> str:
 class NeuralNetwork(nn.Module):
     def __init__(self):
         super().__init__()
+
+
         self.flatten = nn.Flatten()
         self.linear_relu_stack = nn.Sequential(
             nn.Linear(28 * 28, 512),
@@ -42,6 +44,62 @@ class NeuralNetwork(nn.Module):
         x = self.flatten(x)
         return self.linear_relu_stack(x)
 
+class CNN(nn.Module):
+    def __init__(self):
+        super().__init__()
+        # Block 1: learn 32 filters on the raw grayscale image
+        # 1 CNN the convolutional layer
+        # shape after: 32 × 14 × 14
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        #   in_channels: grayscale=1        (color images would be 3)
+        #   out_channels: means it learns 32 different filters -> produces 32 feature maps (32 features are learned) 
+        #   kernel_size: 3x3 filter    
+        #   padding = keeps same size -> adds a border of zeros so the output is the same size as the input
+
+        # 2. The pooling layer
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        # 28x28 → 14x14, 14x14 → 7x7
+        # Shrinks the feature maps by taking the max value in each 2x2 window. This:
+        # Reduces computation
+        # Makes the model robust to small shifts in position
+
+
+
+        # Tensor shape after the convolutional and pooling layers:
+        """
+            Input: 1 x 28 x 28
+            Conv2d(1→32, k=3, pad=1)	same spatial size	32 x 28 x 28
+            MaxPool2d(2)	            halve spatial dims	32 x 14 x 14
+            Conv2d(32→64, k=3, pad=1)	same spatial size	64 x 14 x 14
+            MaxPool2d(2)	            halve again	64 x 7 x 7
+            Flatten	                    multiply all dims	3136
+            Linear(3136→128)		                        128
+            Linear(128→10)		                            10
+
+            64*7*7 = 3136 : The number of hard-coded features that are learned by the convolutional layers. 
+            This is the input size for the first fully connected layer.
+        """
+
+
+        # Block 2: learn 64 filters on the 32 feature maps from block 1
+        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        # shape after: 64 × 7 × 7
+
+        # Classifier head
+        self.flatten = nn.Flatten()
+        # 3. activation function
+        nn.ReLU()
+        self.fc1 = nn.Linear(64 * 7 * 7, 128)   # 3136 → 128
+        self.fc2 = nn.Linear(128, 10)             # 128  → 10 classes
+
+    def forward(self, x):
+        # x enters as shape: (batch, 1, 28, 28)
+        x = self.pool1(torch.relu(self.conv1(x)))  # → (batch, 32, 14, 14)
+        x = self.pool2(torch.relu(self.conv2(x)))  # → (batch, 64,  7,  7)
+        x = self.flatten(x)                        # → (batch, 3136)
+        x = torch.relu(self.fc1(x))               # → (batch, 128)
+        return self.fc2(x)                         # → (batch, 10)
 
 def train(dataloader, model, loss_fn, optimizer, device):
     size = len(dataloader.dataset)
@@ -93,6 +151,11 @@ def predict(model: NeuralNetwork, x, device: str = "mps"):
         pred = model(x)
         return pred.argmax(1).item()
 
+"""
+current model Image (28x28) → Flatten to 784 numbers → Linear → Linear → 10 outputs
+
+The flattening throws away the 2D structure of the image.
+"""
 def problem1(trainAndloadModel: bool = True):
     device = get_device()
     print(f"Using device: {device}")
@@ -153,11 +216,15 @@ def problem1(trainAndloadModel: bool = True):
     actual = classes[y]
 
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
+    # with torch.no_grad():
+    #     x = x.to(device)
+    #     pred = modelLoaded(x)
+    #     predicted = classes[pred[0].argmax(0)]
+    #     actual = classes[y]
+    #     print(f'Predicted: "{predicted}", Actual: "{actual}"')
 
-
-
-
-def main():
+""""""
+def problem2(trainAndloadModel: bool = True):
     device = get_device()
     print(f"Using device: {device}")
 
@@ -170,64 +237,40 @@ def main():
     train_loader = DataLoader(training_data, batch_size=BATCH_SIZE)
     test_loader = DataLoader(test_data, batch_size=BATCH_SIZE)
 
-    model = NeuralNetwork().to(device)
+    model = CNN().to(device)
     print(model)
 
     loss_fn = nn.CrossEntropyLoss()
-    optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
-
-    # Train and test the model
-    for epoch in range(EPOCHS):
-        print(f"\nEpoch {epoch + 1}/{EPOCHS}")
-        train(train_loader, model, loss_fn, optimizer, device)
-        test(test_loader, model, loss_fn, device)
-
-    # Save the model
-    # torch.save(model.state_dict(), MODEL_PATH)
-    saveModel(model, MODEL_PATH)
-    print(f"\nSaved model to {MODEL_PATH}")
+    optimizer = torch.optim.Adam(model.parameters(), lr=1e-3)
+    
+    if trainAndloadModel:
+            # Train and test the model
+        for epoch in range(EPOCHS):
+            print(f"\nEpoch {epoch + 1}/{EPOCHS}")
+            train(train_loader, model, loss_fn, optimizer, device)
+            test(test_loader, model, loss_fn, device)
 
     # Load the model 
     # model = NeuralNetwork().to(device)
     modelLoaded = loadModel(NeuralNetwork(), MODEL_PATH, device)
+    random_index = torch.randint(len(test_data), size=(1,)).item() 
 
     classes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+    # test_data[0 to len(datasets.MNIST)] a tuple: (image_tensor, label)
+    x = test_data[1][0] #test_data[i][0] x = image tensor  (tuple index 0)
+    y = test_data[1][1] #test_data[i][1] y = label integer (tuple index 1)
 
-    """
-    test_data behaves like a list of tuples
-    test_data[i]          →  a tuple: (image_tensor, label)
-    test_data[i][0]       →  the image tensor  (shape: 1 x 28 x 28)
-    test_data[i][1]       →  the integer label (0 - 9, the actual digit)
-
-    test_data[10][0]
-    [10] — select the 10th sample in the dataset (i.e., which handwritten digit image you're looking at)
-    [0] — take the image tensor from that (index 0 of the tuple), not the label (which would be index [1])
-
-    test_data[10][1]
-    [10] — select the 10th sample in the dataset (i.e., which handwritten digit image you're looking at)
-    [1] — take the label from that (index 1 of the tuple), not the image tensor (which would be index [0])
-    """
-    random_index = torch.randint(len(test_data), size=(1,)).item()
-
-    # x, y = test_data[10][0], test_data[10][1] 
-    x = test_data[1][0] # x = image tensor  (tuple index 0)
-    y = test_data[1][1] # y = label integer (tuple index 1)
-    # print (f'\nPredicted x,y: "{x, y}"  \n')
-    print(test_data[10][1])  # prints the true label integer
-
-    # pred = predict(modelLoaded, x, device) # Cannot just use x by itself
     pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
     predicted = classes[pred]
     actual = classes[y]
 
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
-    # with torch.no_grad():
-    #     x = x.to(device)
-    #     pred = modelLoaded(x)
-    #     predicted = classes[pred[0].argmax(0)]
-    #     actual = classes[y]
-    #     print(f'Predicted: "{predicted}", Actual: "{actual}"')
 
+
+
+def main():
+    # problem1(trainAndloadModel=True)
+    problem2(trainAndloadModel=False) # True/False to train-load or load model
 
 if __name__ == "__main__":
     main()
