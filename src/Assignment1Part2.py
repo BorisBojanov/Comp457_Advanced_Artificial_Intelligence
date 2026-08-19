@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
-BATCH_SIZE = 64
+BATCH_SIZE = 64*2
 EPOCHS = 5
 
 
@@ -73,7 +73,7 @@ class CNN(nn.Module):
             Conv2d(1→32, k=3, pad=1)	same spatial size	32 x 28 x 28
             MaxPool2d(2)	            halve spatial dims	32 x 14 x 14
             Conv2d(32→64, k=3, pad=1)	same spatial size	64 x 14 x 14
-            MaxPool2d(2)	            halve again	64 x 7 x 7
+            MaxPool2d(2)	            halve again	        64 x 7 x 7
             Flatten	                    multiply all dims	3136
             Linear(3136→128)		                        128
             Linear(128→10)		                            10
@@ -279,7 +279,7 @@ def problem1(trainAndloadModel: bool = True):
     
 
 
-    classes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+    classes = ["0","1", "2", "3", "4", "5", "6", "7", "8", "9"]
 
     """
     test_data behaves like a list of tuples
@@ -388,8 +388,8 @@ def problem2(trainAndloadModel: bool = True):
 
 
 def main():
-    # problem1(trainAndloadModel=True)
-    problem2(trainAndloadModel=True) # True/False to train-load or load model
+    problem1(trainAndloadModel=True)
+    # problem2(trainAndloadModel=True) # True/False to train-load or load model
 
 if __name__ == "__main__":
     main()
