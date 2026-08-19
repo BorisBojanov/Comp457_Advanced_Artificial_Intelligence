@@ -110,6 +110,13 @@ def imagesPlotter(image_tensors: list, label, num_cols: int = 4):
     """
     Plots all image tensors with its label.
     image_tensors = [img1, img2, img3, img4]
+    
+    The tensor is shape (1, 28, 28) — channel first. 
+        imshow wants 2D, so pass x.squeeze(). 
+        If the tensor has been moved to MPS, add .cpu() first: 
+        x.squeeze().cpu()
+
+epochs
     """
     # Convert single 4D batch tensor to a list of 3D tensors
     images = []
