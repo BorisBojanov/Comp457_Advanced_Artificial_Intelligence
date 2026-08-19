@@ -12,7 +12,7 @@ from torch.utils.data import DataLoader
 from torchvision import datasets
 from torchvision.transforms import ToTensor
 import random
-import matplotlib.pyplot as plot
+import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
@@ -103,8 +103,72 @@ class CNN(nn.Module):
         x = torch.relu(self.fc1(x))               # → (batch, 128)
         return self.fc2(x)                         # → (batch, 10)
 
-def plotter():
+def imagePlotter(image_tensor , label):
     pass
+
+def imagesPlotter(image_tensors: list, label, num_cols: int = 4):
+    """
+    Plots all image tensors with its label.
+    image_tensors = [img1, img2, img3, img4]
+    """
+    # Convert single 4D batch tensor to a list of 3D tensors
+    images = []
+    if isinstance(image_tensors, torch.Tensor) and image_tensors.ndim == 4:
+        images = [image_tensors[i] for i in range(image_tensors.size(0))]
+    else:
+        images = image_tensors
+
+    num_images = len(images)
+    num_rows = (num_images + num_cols - 1) // num_cols
+
+    # Create the figure grid
+    fig, axes = plt.subplots(num_rows, num_cols, figsize=(num_cols * 3, num_rows * 3), squeeze=False)
+    axes = axes.flatten()
+
+    for i in range(len(axes)):
+        if i < num_images:
+            img = images[i].detach().cpu()
+
+            # Handle Grayscale (1, H, W) vs RGB (3, H, W)
+            if img.shape[0] == 1:
+                img = img.squeeze(0)  # Convert to (H, W)
+                cmap = "gray"
+            else:
+                img = img.permute(1, 2, 0)  # Convert (C, H, W) to (H, W, C)
+                cmap = None
+
+            # Unnormalize if your images are scaled to [-1, 1]
+            # img = img * 0.5 + 0.5
+
+            # Clip values to [0, 1] to prevent Matplotlib rendering artifacts
+            img = torch.clamp(img, 0, 1)
+
+            axes[i].imshow(img.numpy(), cmap=cmap)
+            axes[i].axis("off")  # Hide axis labels
+        else:
+            axes[i].axis("off")  # Hide unused grid subplots
+
+    # fig.savefig(f"data/figures/image_plot_{label}.png", dpi=150, bbox_inches="tight")
+    # 3. Optimize layout spacing and render
+    plt.tight_layout()
+    # plt.show() # Will be called outside of this function
+
+    
+
+def curvePlotter(train_losses: list, test_losses: list, test_accs: list):
+    """
+    Left: train_losses and test_losses — two lines, same axes (both are loss, same units, so they share a scaler).
+    Right: test_accs — its own axes.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(train_losses, label="train loss")
+    ax.plot(test_losses, label="test loss")
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("cross-entropy loss")
+    ax.set_title("Training and Test Loss")
+    ax.legend() # makes a legend for multiple lines on the same plot
+    fig.savefig("data/figures/loss_plot.png", dpi=150, bbox_inches="tight")
+    # plt.show() # Will be called outside of this function
 
 
 def train(dataloader, model, loss_fn: nn.CrossEntropyLoss, optimizer, device):
@@ -236,8 +300,10 @@ def problem1(trainAndloadModel: bool = True):
     
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
     print(f'Image {actual} is shown below:')
-    plot.imshow(testimage)
-    plot.show()
+    plt.imshow(testimage)
+    plt.show()
+    curvePlotter(train_losses, test_losses, test_accs)
+
     # with torch.no_grad():
     #     x = x.to(device)
     #     pred = modelLoaded(x)
@@ -274,36 +340,42 @@ def problem2(trainAndloadModel: bool = True):
             train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
             test_accs.append(test(test_loader, model, loss_fn, device)[0])
             test_losses.append(test(test_loader, model, loss_fn, device)[1])
+    else:
+        for epoch in range(EPOCHS):
+            test_accs.append(test(test_loader, model, loss_fn, device)[0])
+            test_losses.append(test(test_loader, model, loss_fn, device)[1])
+
 
 
     # Load the model 
     # model = NeuralNetwork().to(device)
     modelLoaded = loadModel(NeuralNetwork(), MODEL_PATH, device)
-    random_index = random.randint(0, len(test_data)) 
+    random_index = random.randint(0, len(test_data) - 1)
     print(f"Length of test data: {len(test_data)} \n Random index: {random_index}")
 
-    classes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
+    classes = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9"]
     # test_data[0 to len(datasets.MNIST)] a tuple: (image_tensor, label)
-    x = test_data[random_index][0] #test_data[i][0] x = image tensor  (tuple index 0)
-    y = test_data[random_index][1] #test_data[i][1] y = label integer (tuple index 1)
+    tensor = test_data[random_index][0] #test_data[i][0] x = image tensor  (tuple index 0)
+    label = test_data[random_index][1] #test_data[i][1] y = label integer (tuple index 1)
 
     # The image tensor is in the shape (1 x 28 x 28) and needs to be permuted to (28 x 28 x 1) for plotting
-    testimage = x.permute(1, 2, 0).detach().cpu().numpy()  # shows the image of the handwritten digit
-
-    pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
+    testimage0 = test_data[random_index][0] #.permute(1, 2, 0).detach().cpu().numpy()  # shows the image of the handwritten digit
+    testimages = [testimage0]
+    pred = predict(modelLoaded, tensor.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
     predicted = classes[pred]
-    actual = classes[y]
+    actual = classes[label]
     
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
     print(f'Image {actual} is shown below:')
-    plot.imshow(testimage)
-    plot.show()
+    imagesPlotter(testimages, actual)
+    curvePlotter(train_losses, test_losses, test_accs)
+    plt.show()
 
 
 
 def main():
     # problem1(trainAndloadModel=True)
-    problem2(trainAndloadModel=False) # True/False to train-load or load model
+    problem2(trainAndloadModel=True) # True/False to train-load or load model
 
 if __name__ == "__main__":
     main()
