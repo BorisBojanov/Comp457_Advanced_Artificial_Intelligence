@@ -221,14 +221,14 @@ def saveModel(model, path):
     torch.save(model.state_dict(), path)
     print(f"Saved PyTorch Model State to {path}")
 
-def loadModel(model: NeuralNetwork, path: Path, device: str = "mps") -> NeuralNetwork:
+def loadModel(model: NeuralNetwork | CNN, path: Path, device: str = "mps") -> NeuralNetwork | CNN:
     model.load_state_dict(torch.load(path, weights_only=True))
     model.to(device)
     model.eval()
     print(f"Loaded PyTorch Model State from {path}")
     return model
 
-def predict(model: NeuralNetwork, x, device: str = "mps"):
+def predict(model: NeuralNetwork | CNN, x, device: str = "mps"):
     # model.eval()
     with torch.no_grad():
         x = x.to(device)
@@ -355,8 +355,8 @@ def problem2(trainAndloadModel: bool = True):
 
 
     # Load the model 
-    # model = NeuralNetwork().to(device)
-    modelLoaded = loadModel(NeuralNetwork(), MODEL_PATH, device)
+    # model = CNN().to(device)
+    modelLoaded = loadModel(CNN(), MODEL_PATH, device)
     random_index = random.randint(0, len(test_data) - 1)
     print(f"Length of test data: {len(test_data)} \n Random index: {random_index}")
 
