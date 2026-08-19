@@ -16,7 +16,7 @@ import matplotlib.pyplot as plt
 
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
-BATCH_SIZE = 64*2
+BATCH_SIZE = 64
 EPOCHS = 5
 
 
@@ -51,8 +51,8 @@ class CNN(nn.Module):
         super().__init__()
         # Block 1: learn 32 filters on the raw grayscale image
         # 1 CNN the convolutional layer
-        # shape after: 32 × 14 × 14
         self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        # shape after: 32 × 14 × 14
         #   in_channels: grayscale=1        (color images would be 3)
         #   out_channels: means it learns 32 different filters -> produces 32 feature maps (32 features are learned) 
         #   kernel_size: 3x3 filter    
@@ -84,23 +84,37 @@ class CNN(nn.Module):
 
 
         # Block 2: learn 64 filters on the 32 feature maps from block 1
-        self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
-        self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
+        # self.conv2 = nn.Conv2d(in_channels=32, out_channels=64, kernel_size=3, padding=1)
+        # self.pool2 = nn.MaxPool2d(kernel_size=2, stride=2)
         # shape after: 64 × 7 × 7
 
+        # Block 3: A third convolutional layer to learn 128 filters on the 64 feature maps from block 2
+        # self.conv3 = nn.Conv2d(in_channels=64, out_channels=128, kernel_size=3, padding=1)
+        # self.pool3 = nn.MaxPool2d(kernel_size=2, stride=2)
+        # shape after: 128 × 3 × 3 (2.5x2.5 + 1 → 3.5x3.5 after round down to 3x3)
+        
         # Classifier head
         self.flatten = nn.Flatten()
         # 3. activation function
         nn.ReLU()
-        self.fc1 = nn.Linear(64 * 7 * 7, 128)   # 3136 → 128
-        self.fc2 = nn.Linear(128, 10)             # 128  → 10 classes
+
+        self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 128 (1 convolutional layer)
+        self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+        
+        # self.fc1 = nn.Linear(64 * 7 * 7, 128)   # 3136 → 128 (2 convolutional layers)
+        # self.fc2 = nn.Linear(128, 10)             # 128  → 10 classes
+
+        # self.fc1 = nn.Linear(128 * 3 * 3, 256)    # 1152 → 256 (3 convolutional layers)
+        # self.fc2 = nn.Linear(256, 10)             # 256  → 10 classes
+
 
     def forward(self, x):
         # x enters as shape: (batch, 1, 28, 28)
         x = self.pool1(torch.relu(self.conv1(x)))  # → (batch, 32, 14, 14)
-        x = self.pool2(torch.relu(self.conv2(x)))  # → (batch, 64,  7,  7)
-        x = self.flatten(x)                        # → (batch, 3136)
-        x = torch.relu(self.fc1(x))               # → (batch, 128)
+        # x = self.pool2(torch.relu(self.conv2(x)))  # → (batch, 64,  7,  7)
+        # x = self.pool3(torch.relu(self.conv3(x)))  # → (batch, 128,  3,  3)
+        x = self.flatten(x)                        # → (batch, 3136) or (1152)
+        x = torch.relu(self.fc1(x))                # → (batch, 128) or (256)
         return self.fc2(x)                         # → (batch, 10)
 
 def imagePlotter(image_tensor , label):
@@ -388,8 +402,8 @@ def problem2(trainAndloadModel: bool = True):
 
 
 def main():
-    problem1(trainAndloadModel=True)
-    # problem2(trainAndloadModel=True) # True/False to train-load or load model
+    # problem1(trainAndloadModel=True)
+    problem2(trainAndloadModel=True) # True/False to train-load or load model
 
 if __name__ == "__main__":
     main()
