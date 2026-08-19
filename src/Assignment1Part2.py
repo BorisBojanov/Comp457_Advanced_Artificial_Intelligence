@@ -51,7 +51,7 @@ class CNN(nn.Module):
         super().__init__()
         # Block 1: learn 32 filters on the raw grayscale image
         # 1 CNN the convolutional layer
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=1)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=0)
         # shape after: 32 × 14 × 14
         #   in_channels: grayscale=1        (color images would be 3)
         #   out_channels: means it learns 32 different filters -> produces 32 feature maps (32 features are learned) 
@@ -59,7 +59,7 @@ class CNN(nn.Module):
         #   padding = keeps same size -> adds a border of zeros so the output is the same size as the input
 
         # 2. The pooling layer
-        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2)
+        self.pool1 = nn.MaxPool2d(kernel_size=2, stride=2) # divides the spatial dimensions by 2
         # 28x28 → 14x14, 14x14 → 7x7
         # Shrinks the feature maps by taking the max value in each 2x2 window. This:
         # Reduces computation
@@ -67,8 +67,11 @@ class CNN(nn.Module):
 
 
 
-        # Tensor shape after the convolutional and pooling layers:
         """
+            Tensor shape after the convolutional and pooling layers:
+            Formula for the output size:
+            out = floor((W - K + 2P) / S) + 1
+
             Input: 1 x 28 x 28
             Conv2d(1→32, k=3, pad=1)	same spatial size	32 x 28 x 28
             MaxPool2d(2)	            halve spatial dims	32 x 14 x 14
@@ -98,8 +101,9 @@ class CNN(nn.Module):
         # 3. activation function
         nn.ReLU()
 
-        self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 128 (1 convolutional layer)
-        self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+        # Chanign number of convolutional layers
+        # self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 64 (1 convolutional layer)
+        # self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
         
         # self.fc1 = nn.Linear(64 * 7 * 7, 128)   # 3136 → 128 (2 convolutional layers)
         # self.fc2 = nn.Linear(128, 10)             # 128  → 10 classes
@@ -107,15 +111,32 @@ class CNN(nn.Module):
         # self.fc1 = nn.Linear(128 * 3 * 3, 256)    # 1152 → 256 (3 convolutional layers)
         # self.fc2 = nn.Linear(256, 10)             # 256  → 10 classes
 
+        # Changing Padding and Strides
+        self.fc1 = nn.Linear(32 * 13 * 13, 64)   # 5408 → 64 (1 convolutional layer)
+        self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+
+    # def forward(self, x):
+    #     # x enters as shape: (batch, 1, 28, 28)
+    #     x = self.pool1(torch.relu(self.conv1(x)))  # → (batch, 32, 14, 14)
+    #     # x = self.pool2(torch.relu(self.conv2(x)))  # → (batch, 64,  7,  7)
+    #     # x = self.pool3(torch.relu(self.conv3(x)))  # → (batch, 128,  3,  3)
+    #     x = self.flatten(x)                        # → (batch, 3136) or (1152)
+    #     x = torch.relu(self.fc1(x))                # → (batch, 128) or (256)
+    #     return self.fc2(x)                         # → (batch, 10)
 
     def forward(self, x):
         # x enters as shape: (batch, 1, 28, 28)
-        x = self.pool1(torch.relu(self.conv1(x)))  # → (batch, 32, 14, 14)
-        # x = self.pool2(torch.relu(self.conv2(x)))  # → (batch, 64,  7,  7)
-        # x = self.pool3(torch.relu(self.conv3(x)))  # → (batch, 128,  3,  3)
-        x = self.flatten(x)                        # → (batch, 3136) or (1152)
-        x = torch.relu(self.fc1(x))                # → (batch, 128) or (256)
+        # padding = 0, stride = 1, kernel_size = 3, W = 28
+        # If we set padding = 0 then our size formula must be
+        # out = floor((W - K + 2(0)) / S) + 1
+        # out = floor((W - K) / S) + 1
+
+        x = self.pool1(torch.relu(self.conv1(x)))  # → (batch, 32, 26, 26)
+        #each convolution layer eats 2 pixels
+        x = self.flatten(x)                        # → (batch, 21632)
+        x = torch.relu(self.fc1(x))                # → (batch, 64)
         return self.fc2(x)                         # → (batch, 10)
+
 
 def imagePlotter(image_tensor , label):
     pass
@@ -228,7 +249,7 @@ def test(dataloader, model, loss_fn, device):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
+    # print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
     return correct, test_loss
 
 def saveModel(model, path):
