@@ -268,16 +268,16 @@ def problem1(trainAndloadModel: bool = True):
             train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
             test_accs.append(test(test_loader, model, loss_fn, device)[0])
             test_losses.append(test(test_loader, model, loss_fn, device)[1])
+        saveModel(model, MODEL_PATH)
     else:
         for epoch in range(EPOCHS):
             test_accs.append(test(test_loader, model, loss_fn, device)[0])
             test_losses.append(test(test_loader, model, loss_fn, device)[1])
-
-    
-
     # Load the model 
     # model = NeuralNetwork().to(device)
     modelLoaded = loadModel(NeuralNetwork(), MODEL_PATH, device)
+    
+
 
     classes = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "0"]
 
@@ -352,16 +352,18 @@ def problem2(trainAndloadModel: bool = True):
             train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
             test_accs.append(test(test_loader, model, loss_fn, device)[0])
             test_losses.append(test(test_loader, model, loss_fn, device)[1])
+        saveModel(model, MODEL_PATH)
+
     else:
         for epoch in range(EPOCHS):
             test_accs.append(test(test_loader, model, loss_fn, device)[0])
             test_losses.append(test(test_loader, model, loss_fn, device)[1])
-
-
-
     # Load the model 
     # model = CNN().to(device)
     modelLoaded = loadModel(CNN(), MODEL_PATH, device)
+
+
+
     random_index = random.randint(0, len(test_data) - 1)
     print(f"Length of test data: {len(test_data)} \n Random index: {random_index}")
 
