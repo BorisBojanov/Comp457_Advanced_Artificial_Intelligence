@@ -259,12 +259,17 @@ def problem1(trainAndloadModel: bool = True):
     loss_fn = nn.CrossEntropyLoss()
     optimizer = torch.optim.SGD(model.parameters(), lr=1e-3)
     train_losses, test_losses, test_accs = [], [], []
+
     if trainAndloadModel:
             # Train and test the model
         for epoch in range(EPOCHS):
             print(f"\nEpoch {epoch + 1}/{EPOCHS}")
             
             train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
+            test_accs.append(test(test_loader, model, loss_fn, device)[0])
+            test_losses.append(test(test_loader, model, loss_fn, device)[1])
+    else:
+        for epoch in range(EPOCHS):
             test_accs.append(test(test_loader, model, loss_fn, device)[0])
             test_losses.append(test(test_loader, model, loss_fn, device)[1])
 
@@ -298,8 +303,8 @@ def problem1(trainAndloadModel: bool = True):
     y = test_data[random_index][1] # y = label integer (tuple index 1)
     # print (f'\nPredicted x,y: "{x, y}"  \n')
     # print(test_data[10][1])  # prints the true label integer
-    testimage = x.permute(1, 2, 0).detach().cpu().numpy()  # shows the image of the handwritten digit
-
+    testimage0 = test_data[random_index][0] #.permute(1, 2, 0).detach().cpu().numpy()  # shows the image of the handwritten digit
+    testimages = [testimage0]
     # pred = predict(modelLoaded, x, device) # Cannot just use x by itself
     pred = predict(modelLoaded, x.unsqueeze(0), device) # adds a batch dimension to the image tensor (1 x 28 x 28) → (1 x 1 x 28 x 28)
     predicted = classes[pred]
@@ -307,9 +312,9 @@ def problem1(trainAndloadModel: bool = True):
     
     print(f'Predicted: "{predicted}", Actual: "{actual}"')
     print(f'Image {actual} is shown below:')
-    plt.imshow(testimage)
-    plt.show()
+    imagesPlotter(testimages, actual)
     curvePlotter(train_losses, test_losses, test_accs)
+    plt.show()
 
     # with torch.no_grad():
     #     x = x.to(device)
