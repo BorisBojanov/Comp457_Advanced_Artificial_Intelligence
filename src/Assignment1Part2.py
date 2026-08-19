@@ -176,6 +176,7 @@ def train(dataloader, model, loss_fn: nn.CrossEntropyLoss, optimizer, device):
     lossEpoch = 0
     avgTrainingloss = 0.0 # average training loss per epoch
     model.train()
+    num_batches = len(dataloader)
     for batch, (X, y) in enumerate(dataloader):
         X, y = X.to(device), y.to(device)
         pred = model(X)
@@ -185,13 +186,12 @@ def train(dataloader, model, loss_fn: nn.CrossEntropyLoss, optimizer, device):
         optimizer.step()
         optimizer.zero_grad()
 
+        lossEpoch += loss.item()
         if batch % 100 == 0:
             current = (batch + 1) * len(X)
             print(f"  loss: {loss.item():>7f}  [{current:>5d}/{size:>5d}]")
-            lossEpoch += loss.item()
 
-    # return: total / len(dataloader)
-    avgTrainingloss = lossEpoch / size
+    avgTrainingloss = lossEpoch / num_batches
     return avgTrainingloss
 
 def test(dataloader, model, loss_fn, device):
