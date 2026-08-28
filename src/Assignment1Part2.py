@@ -51,7 +51,7 @@ class CNN(nn.Module):
         super().__init__()
         # Block 1: learn 32 filters on the raw grayscale image
         # 1 CNN the convolutional layer
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, padding=0)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
         # shape after: 32 × 14 × 14
         #   in_channels: grayscale=1        (color images would be 3)
         #   out_channels: means it learns 32 different filters -> produces 32 feature maps (32 features are learned) 
@@ -99,11 +99,13 @@ class CNN(nn.Module):
         # Classifier head
         self.flatten = nn.Flatten()
         # 3. activation function
-        nn.ReLU()
+        # nn.ReLU()
+        nn.Tanh()
+
 
         # Chanign number of convolutional layers
-        # self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 64 (1 convolutional layer)
-        # self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+        self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 64 (1 convolutional layer)
+        self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
         
         # self.fc1 = nn.Linear(64 * 7 * 7, 128)   # 3136 → 128 (2 convolutional layers)
         # self.fc2 = nn.Linear(128, 10)             # 128  → 10 classes
@@ -112,8 +114,21 @@ class CNN(nn.Module):
         # self.fc2 = nn.Linear(256, 10)             # 256  → 10 classes
 
         # Changing Padding and Strides
-        self.fc1 = nn.Linear(32 * 13 * 13, 64)   # 5408 → 64 (1 convolutional layer)
-        self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+        # padding = 0, stride = 1, kernel_size = 3, W = 28
+        # out = 26 (remember to devide by 2 because of pooling layer)
+        # self.fc1 = nn.Linear(32 * 13 * 13, 64)   # 5408 → 64 (1 convolutional layer)
+        # self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+
+        # padding = 1, stride = 3, kernel_size = 3, W = 28
+        # out = 10
+        # self.fc1 = nn.Linear(32 * 5 * 5, 32)    # 800 → 32 (1 convolutional layer)
+        # self.fc2 = nn.Linear(32, 10)            # 64   → 10 classes
+
+        # padding = 3, stride = 5, kernel_size = 3, W = 28
+        # ((28 - 3 +2(3)) / 5) +1 = |6.2| +1 = 7
+        # out = 7
+        # self.fc1 = nn.Linear(32 * 3 * 3, 32)    # 288 → 32 (1 convolutional layer)
+        # self.fc2 = nn.Linear(32, 10)            # 32   → 10 classes
 
     # def forward(self, x):
     #     # x enters as shape: (batch, 1, 28, 28)
@@ -249,7 +264,7 @@ def test(dataloader, model, loss_fn, device):
             correct += (pred.argmax(1) == y).type(torch.float).sum().item()
     test_loss /= num_batches
     correct /= size
-    # print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
+    print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
     return correct, test_loss
 
 def saveModel(model, path):
@@ -301,8 +316,12 @@ def problem1(trainAndloadModel: bool = True):
             print(f"\nEpoch {epoch + 1}/{EPOCHS}")
             
             train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
-            test_accs.append(test(test_loader, model, loss_fn, device)[0])
-            test_losses.append(test(test_loader, model, loss_fn, device)[1])
+            acc, loss = test(test_loader, model, loss_fn, device)
+            test_accs.append(acc)
+            test_losses.append(loss)
+            # Just call test once. 
+            # test_accs.append(test(test_loader, model, loss_fn, device)[0])
+            # test_losses.append(test(test_loader, model, loss_fn, device)[1])
         saveModel(model, MODEL_PATH)
     else:
         for epoch in range(EPOCHS):
@@ -385,8 +404,11 @@ def problem2(trainAndloadModel: bool = True):
             print(f"\nEpoch {epoch + 1}/{EPOCHS}")
 
             train_losses.append(train(train_loader, model, loss_fn, optimizer, device))
-            test_accs.append(test(test_loader, model, loss_fn, device)[0])
-            test_losses.append(test(test_loader, model, loss_fn, device)[1])
+            acc, loss = test(test_loader, model, loss_fn, device)
+            test_accs.append(acc)
+            test_losses.append(loss)
+            # test_accs.append(test(test_loader, model, loss_fn, device)[0])
+            # test_losses.append(test(test_loader, model, loss_fn, device)[1])
         saveModel(model, MODEL_PATH)
 
     else:
