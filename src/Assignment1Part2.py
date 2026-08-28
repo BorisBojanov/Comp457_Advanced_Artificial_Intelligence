@@ -51,7 +51,7 @@ class CNN(nn.Module):
         super().__init__()
         # Block 1: learn 32 filters on the raw grayscale image
         # 1 CNN the convolutional layer
-        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=1, padding=1)
+        self.conv1 = nn.Conv2d(in_channels=1, out_channels=32, kernel_size=3, stride=5, padding=1)
         # shape after: 32 × 14 × 14
         #   in_channels: grayscale=1        (color images would be 3)
         #   out_channels: means it learns 32 different filters -> produces 32 feature maps (32 features are learned) 
@@ -104,8 +104,8 @@ class CNN(nn.Module):
 
 
         # Chanign number of convolutional layers
-        self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 64 (1 convolutional layer)
-        self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
+        # self.fc1 = nn.Linear(32 * 14 * 14, 64)   # 6272 → 64 (1 convolutional layer)
+        # self.fc2 = nn.Linear(64, 10)             # 64   → 10 classes
         
         # self.fc1 = nn.Linear(64 * 7 * 7, 128)   # 3136 → 128 (2 convolutional layers)
         # self.fc2 = nn.Linear(128, 10)             # 128  → 10 classes
@@ -123,6 +123,11 @@ class CNN(nn.Module):
         # out = 10
         # self.fc1 = nn.Linear(32 * 5 * 5, 32)    # 800 → 32 (1 convolutional layer)
         # self.fc2 = nn.Linear(32, 10)            # 64   → 10 classes
+
+        # padding = 1, stride = 5, kernel_size = 3, W = 28
+        # ((28 - 3 +2(1)) / 5) +1 = |5.4| +1 = 6
+        self.fc1 = nn.Linear(32 * 3 * 3, 32)   # 288 → 32 (1 convolutional layer)
+        self.fc2 = nn.Linear(32, 10)
 
         # padding = 3, stride = 5, kernel_size = 3, W = 28
         # ((28 - 3 +2(3)) / 5) +1 = |6.2| +1 = 7
