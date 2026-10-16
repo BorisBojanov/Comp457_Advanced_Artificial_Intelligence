@@ -1,4 +1,5 @@
 name: Comp457
+  # conda env update --file environment.yml --prune
 channels:
   - conda-forge
 dependencies:
@@ -6,7 +7,12 @@ dependencies:
   - jupyterlab
   - numpy
   - matplotlib
+  - nltk
+  - scikit-learn
   - pip
+  - pip:
+    - transformers
+    - torchnlp
   # PyTorch comes from conda-forge, NOT pip, so that it shares this
   # environment's single OpenMP runtime. The pip wheel bundles its own
   # copy of libomp; loading that alongside conda-forge numpy's libomp

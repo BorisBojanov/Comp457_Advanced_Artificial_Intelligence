@@ -128,7 +128,6 @@ Interpreter* -> the entry under `envs/Comp457/bin/python`. The choice is
 cached per workspace, so a stale selection survives env changes and
 shows up as `spawn ... ENOENT` errors in the Python extension log.
 
-
 ## Day-to-day workflow between machines
 
 Before starting work on either machine:
@@ -140,3 +139,25 @@ After making changes:
 '''bash
 git add -A && git commit -m "..." && git push
 '''
+
+## Problem2 Setup
+
+SemCor isn’t a conda package, we need to get it through NLTK.
+'''bash
+conda install -c conda-forge nltk
+'''
+
+Download the corpus data
+'''bash
+python -c "import nltk; nltk.download('semcor'); nltk.download('wordnet')"
+'''
+The data goes to ~/nltk_data by default, To put it in the environment instead:
+
+'''Python3
+from nltk.corpus import semcor
+
+print(semcor.words()[:10])
+print(semcor.tagged_sents(tag='sem')[0])   # sense-tagged (WordNet lemma) sentences
+'''
+The tag argument can be 'pos', 'sem' or 'both'.
+

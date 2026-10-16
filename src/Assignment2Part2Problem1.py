@@ -27,7 +27,7 @@ We need pass text data through an text embedding layer, feed those embeddings se
 4. (evaluateModel): Evaluate the model on the test set and 
     report the accuracy, confusion matrix, precision, recall, and F1 score.
 
-5. Repeat (RNN, LSTM, GRU): Replace RNN with LSTM and GRU and compare performance with different embedding sizes and sequence lengths. Also, repeat the experiment using a pre-trained embedding (e.g., GloVe) and compare the performance.
+5. Repeat (RNN, LSTM, GRU): Replace RNN with LSTM and GRU and compare performance with different embedding sizes and sequence lengths. Also, repeat the experiment using a pre-trained embedding (GloVe) and compare the performance.
 
 
 IMDB dataset for sentiment analysis: https://ai.stanford.edu/~amaas/data/sentiment/
@@ -71,6 +71,7 @@ from pathlib import Path
 
 import math
 import random
+from typing import Any
 import matplotlib.pyplot as plt
 
 # Model
@@ -172,6 +173,32 @@ class LSTM(nn.Module):
     def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1):
         super().__init__()
         self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
+        """
+                N ={} & text{batch size} \\
+                L ={} & text{sequence length} \\
+                D ={} & 2 text{ if bidirectional=True otherwise } 1 \\
+                H_{in} ={} & text{input_size} \\
+                H_{cell} ={} & text{hidden_size} \\
+                H_{out} ={} & text{proj_size if } text{proj_size}>0 text{ otherwise hidden_size} \\
+        Outputs: output, (h_n, c_n)
+                output: tensor of shape `(L, D * H_{out})` for unbatched input,
+                  `(L, N, D * H_{out})` when ``batch_first=False`` or
+                  `(N, L, D * H_{out})` when ``batch_first=True`` containing the output features
+                  `(h_t)` from the last layer of the LSTM, for each `t`. If a
+                  :class:`torch.nn.utils.rnn.PackedSequence` has been given as the input, the output
+                  will also be a packed sequence. When ``bidirectional=True``, `output` will contain
+                  a concatenation of the forward and reverse hidden states at each time step in the sequence.
+                h_n: tensor of shape `(D * text{num_layers}, H_{out})` for unbatched input or
+                  `(D * text{num_layers}, N, H_{out})` containing the
+                  final hidden state for each element in the sequence. When ``bidirectional=True``,
+                  `h_n` will contain a concatenation of the final forward and reverse hidden states, respectively.
+                c_n: tensor of shape `(D * text{num_layers}, H_{cell})` for unbatched input or
+                  `(D * text{num_layers}, N, H_{cell})` containing the
+                  final cell state for each element in the sequence. When ``bidirectional=True``,
+                  `c_n` will contain a concatenation of the final forward and reverse cell states, respectively.
+
+        """
+        # nn.LSTM returns: output, (h_n, c_n)
         self.lstm = nn.LSTM(embedding_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
         self.sigmoid = nn.Sigmoid()
@@ -193,6 +220,7 @@ class GRU(nn.Module):
         embedded = self.embedding(text)
         _, hidden = self.gru(embedded)
         return self.sigmoid(self.fc(hidden[-1]))
+
 
 # Helper functions for saving and loading models
 def _saveModel(model, path):
@@ -329,6 +357,7 @@ def initializeModel(model_cls: type[RNN | LSTM | GRU]):
 
     return model, device, criterion, optimizer
 
+
 def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     """sumary_line
     
@@ -338,13 +367,11 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     argument -- description
     Return: return_description
     """
-
     train_loader, test_loader, vocab = prepareData()
+    # ---RNN, LSTM, GRU ---
     model, device, criterion, optimizer = initializeModel(model_cls)
-
     # Training Loop
     model.train()
-
     for epoch in range(EPOCHS):
         total_loss = 0
         for batch_text, batch_labels in train_loader:
@@ -370,6 +397,13 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
 
     # Return model, test_loader and device
     return model, test_loader, device
+
+
+        
+
+
+
+
 
 def evaluateModel(model: RNN | LSTM | GRU, test_loader: DataLoader, device: str):
     """evaluateModel
@@ -410,10 +444,12 @@ def evaluateModel(model: RNN | LSTM | GRU, test_loader: DataLoader, device: str)
         saves my sanity and memory   
     """
     with torch.no_grad():                         # no gradients needed, saves time and memory
+        correct = 0
+        total = 0
         for batchText, batchLabels in test_loader:
             batchText = batchText.to(device)
             batchLabels = batchLabels.to(device)
-            
+
             probs = model(batchText).squeeze(1)  # [B, 1] -> [B], values in (0, 1)
             preds = (probs > 0.5).float()         # threshold -> hard 0.0 / 1.0
 
@@ -422,6 +458,19 @@ def evaluateModel(model: RNN | LSTM | GRU, test_loader: DataLoader, device: str)
             tn += ((preds == 0) & (batchLabels == 0)).sum().item()
             fp += ((preds == 1) & (batchLabels == 0)).sum().item()
             fn += ((preds == 0) & (batchLabels == 1)).sum().item()
+
+            # ---
+            # Add an additional dimension for the sequence length
+            batchText2 = batchText.unsqueeze(1)
+            outputs = model(batchText2)
+            predicted = (torch.sigmoid(outputs.squeeze()) > 0.5).float()
+            total += batchLabels.size(0)
+            correct += (predicted == batchLabels).sum().item()
+            # ---
+        # ---
+        accuracy = correct / total
+        print(f'Acuracy: {100*accuracy:.4f} %')
+        # ---
     
     total     = tp + tn + fp + fn
     accuracy  = (tp + tn) / total
@@ -455,7 +504,7 @@ def evaluateModel(model: RNN | LSTM | GRU, test_loader: DataLoader, device: str)
     return fancydict
 
 def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
-    """sumary_line
+    """SentimentAnalysis
         1. Data Preperation
         2. Model architecture
         3. Train Model
@@ -475,9 +524,24 @@ def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
     # 4. Evaluate Model (returns the metrics dict so Problem1 can compare models)
     return evaluateModel(model, test_loader, device)
 
-
+# ---Problem 1---
 def Problem1():
     """
+    Use the IMDB dataset (available via `torchtext` or `tensorflow_datasets`) 
+        — 25,000 training reviews, 25,000 test reviews (binary: positive/negative).
+
+    1. Tokenize the text, remove stop words and punctuation (optional), 
+        convert tokens to integer sequences using a vocabulary, and pad sequences to the same length.
+    2. Build a simple RNN model using a framework of your choice (i.e., `PyTorch`, `TensorFlow`, or `Keras`). 
+        Your model architecture must include an embedding layer, an RNN layer, and a fully connected output layer with sigmoid activation.
+    3. Train the model using the training set and log the training process using binary cross-entropy loss and apply the Adam optimizer. 
+        Train the model for a fixed number of epochs (5-10) and record the loss and accuracy.
+    4. Evaluate the model on the test set and report the accuracy, confusion matrix, precision, recall, and F1 score.
+    5. Replace RNN with LSTM and GRU and compare performance with different embedding sizes and sequence lengths. 
+        Also, repeat the experiment using a pre-trained embedding (GloVe) and compare the performance.
+
+    For Problem1 hidden[-1], summarizes the whole sequence
+
     TODO: Each trainingLoop call re-reads and re-tokenizes all 50,000 files, so Problem1 does it three times. Its fine for now. Later
             could call prepareData() once in Problem1 and pass the loaders down as arguments.
     
@@ -494,8 +558,14 @@ def Problem1():
     for result in results:
         print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
 
-def Problem2():
-    pass
+def encodeWindow(tokens, target_idx, vocab, k=10):
+    ids = lambda ws: [vocab.get(w, UNK) for w in ws]
+    left  = ids(tokens[max(0, target_idx - k):target_idx])
+    right = ids(tokens[target_idx + 1:target_idx + 1 + k])
+    left  = [PAD] * (k - len(left)) + left
+    right = right + [PAD] * (k - len(right))
+    return left + ids([tokens[target_idx]]) + right      # length 2k+1, target at index k
+
 
 def example():
     """Source code for torchnlp.datasets.imdb
@@ -518,7 +588,7 @@ def example():
         Note:
             The order examples are returned is not guaranteed due to ``iglob``.
 
-        **Reference:** http://ai.stanford.edu/~amaas/data/sentiment/
+        Reference: http://ai.stanford.edu/~amaas/data/sentiment/
 
         Args:
             directory (str, optional): Directory to cache the dataset.
