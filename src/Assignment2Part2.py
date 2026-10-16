@@ -125,7 +125,7 @@ class RNN(nn.Module):
         super().__init__()
 
         # 1. Embedding Layer: Maps word indices to dense vectors (embeddings)
-        self.embedding = nn.Embedding(vocab_size, embedding_dim)
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
         
         """
         2. RNN Layer: Processes sequences of text
@@ -182,7 +182,17 @@ class LSTM(nn.Module):
         return self.sigmoid(self.fc(hidden[-1]))
 
 class GRU(nn.Module):
-    pass
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1):
+        super().__init__()
+        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
+        self.gru = nn.GRU(embedding_dim, hidden_dim, batch_first=True)
+        self.fc = nn.Linear(hidden_dim, output_dim)
+        self.sigmoid = nn.Sigmoid()
+
+    def forward(self, text):
+        embedded = self.embedding(text)
+        _, hidden = self.gru(self.embedded)
+        return self.sigmoid(self.fc(hidden[-1]))
 
 # Helper functions for saving and loading models
 def _saveModel(model, path):
@@ -299,7 +309,7 @@ def prepareData(data: bool = False):
     return traindata, testdata, vocab
 
 
-def initializeModel(model_cls: nn.Module):
+def initializeModel(model_cls: type[nn.Module]):
     """
     for all three models, initializeModel will need to take the class as a parameter
     
@@ -312,8 +322,8 @@ def initializeModel(model_cls: nn.Module):
     device = get_device()
 
     # Initialize Model, Loss, and Optimizer
-    model = model_cls(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM)
-    model = RNN(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM).to(device)
+    # model = RNN(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM).to(device)
+    model = model_cls(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM).to(device)
 
     # criterion = nn.BCEWithLogitsLoss()
     criterion = nn.BCELoss()
@@ -321,7 +331,7 @@ def initializeModel(model_cls: nn.Module):
 
     return model, device, criterion, optimizer
 
-def trainingLoop():
+def trainingLoop(model_cls):
     """sumary_line
     
     list of dicts → (texts, labels) as tensors → TensorDataset → DataLoader → iterate in batches
@@ -332,10 +342,11 @@ def trainingLoop():
     """
 
     train_loader, test_loader, vocab = prepareData()
-    model, device, criterion, optimizer = initializeModel()
+    model, device, criterion, optimizer = initializeModel(model_cls)
 
     # Training Loop
     model.train()
+
     for epoch in range(EPOCHS):
         total_loss = 0
         for batch_text, batch_labels in train_loader:
@@ -363,11 +374,14 @@ def trainingLoop():
     return model, test_loader, device
 
     # TODO
-def evaluateModel():
+def evaluateModel(model, test_loader, device):
     """evaluateModel
         Evaluate the model on the test set
         Report: accuracy, confusion matrix, precision, recall, and F1 score
     
+        wrap it in model.eval() and with torch.no_grad(): 
+        Threshold the output with (model(x).squeeze(1) > 0.5).float() to get 0/1 predictions.
+
     Keyword arguments:
     argument -- description
     Return: return_description
@@ -376,7 +390,7 @@ def evaluateModel():
     pass
 
 
-def SentimentAnalysis(model):
+def SentimentAnalysis(model_cls):
     """sumary_line
         1. Data Preperation
         2. Model architecture
@@ -393,15 +407,26 @@ def SentimentAnalysis(model):
     testingData = loadDataset(False)
 
     # 2. Model architecture
-    rnn = RNN
     # 3. Train Model
+    model, test_loader, device = trainingLoop(model_cls)
     # 4. Evaluate Model
+    evaluateModel(model, test_loader, device)              
+
     pass
 
 def Problem1():
+    """
+    TODO: Each trainingLoop call re-reads and re-tokenizes all 50,000 files, so Problem1 does it three times. Its fine for now. Later
+            could call prepareData() once in Problem1 and pass the loaders down as arguments.
+    
+    Keyword arguments:
+    argument -- description
+    Return: return_description
+    """
+    
     SentimentAnalysis(RNN)
-    SentimentAnalysis(LSTM)
-    SentimentAnalysis(GRU)
+    # SentimentAnalysis(LSTM)
+    # SentimentAnalysis(GRU)
 
 
 def example():
@@ -488,7 +513,7 @@ def example():
 
 
 def main():
-    pass
+    Problem1()
 
 if __name__ == "__main__":
     main()
