@@ -191,7 +191,7 @@ class GRU(nn.Module):
 
     def forward(self, text):
         embedded = self.embedding(text)
-        _, hidden = self.gru(self.embedded)
+        _, hidden = self.gru(embedded)
         return self.sigmoid(self.fc(hidden[-1]))
 
 # Helper functions for saving and loading models
@@ -239,7 +239,6 @@ def encode(text, vocab, max_len=MAX_LEN):
     ids = ids[:max_len]                                            # truncate
     padding = [PAD] * (max_len - len(ids))                         # how many pads are needed
     return padding + ids                                           # left-pad
-
 
 def toDataLoader(examples, vocab, shuffle: bool =False):
 
@@ -455,7 +454,6 @@ def evaluateModel(model: RNN | LSTM | GRU, test_loader: DataLoader, device: str)
     
     return fancydict
 
-
 def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
     """sumary_line
         1. Data Preperation
@@ -468,15 +466,14 @@ def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
     model -- RNN or LSTM or GRU
     Return: return_description
     """
-    # 1. Data Preperation
-    traingData = loadDataset(True)
-    testingData = loadDataset(False)
-
-    # 2. Model architecture
-    # 3. Train Model
+    # 1-3. Data preparation, model architecture and training all happen inside trainingLoop
     model, test_loader, device = trainingLoop(model_cls)
-    # 4. Evaluate Model
-    evaluateModel(model, test_loader, device)              
+    
+    path = MODEL_PATH
+    _saveModel(model, path)
+
+    # 4. Evaluate Model (returns the metrics dict so Problem1 can compare models)
+    return evaluateModel(model, test_loader, device)
 
 
 def Problem1():
@@ -491,17 +488,14 @@ def Problem1():
     results = []
     for cls in (RNN, LSTM, GRU):
         results.append(SentimentAnalysis(cls))
-        print(f"{'Model':<6} {'Acc':>7} {'Prec':>7} {'Rec':>7} {'F1':>7}")
-        for result in results:
-            print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
 
-    SentimentAnalysis(RNN)
-    # SentimentAnalysis(LSTM)
-    # SentimentAnalysis(GRU)
-    # print(f"{'Model':<6} {'Acc':>7} {'Prec':>7} {'Rec':>7} {'F1':>7}")
-    # for r in results:
-    #             print(f"{r['model']:<6} {r['accuracy']:7.4f} {r['precision']:7.4f} {r['recall']:7.4f}{r['f1']:7.4f}")
+    # Comparison table, printed once after all three models have been trained and evaluated
+    print(f"{'Model':<6} | {'Acc':>7} | {'Prec':>7} | {'Rec':>7} | {'F1':>7}")
+    for result in results:
+        print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
 
+def Problem2():
+    pass
 
 def example():
     """Source code for torchnlp.datasets.imdb
