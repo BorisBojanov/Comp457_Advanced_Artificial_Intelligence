@@ -309,7 +309,7 @@ def prepareData(data: bool = False):
     return traindata, testdata, vocab
 
 
-def initializeModel(model_cls: type[nn.Module]):
+def initializeModel(model_cls: type[RNN | LSTM | GRU]):
     """
     for all three models, initializeModel will need to take the class as a parameter
     
@@ -331,7 +331,7 @@ def initializeModel(model_cls: type[nn.Module]):
 
     return model, device, criterion, optimizer
 
-def trainingLoop(model_cls):
+def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     """sumary_line
     
     list of dicts → (texts, labels) as tensors → TensorDataset → DataLoader → iterate in batches
@@ -374,7 +374,7 @@ def trainingLoop(model_cls):
     return model, test_loader, device
 
     # TODO
-def evaluateModel(model, test_loader, device):
+def evaluateModel(model: RNN | LSTM | GRU, test_loader, device):
     """evaluateModel
         Evaluate the model on the test set
         Report: accuracy, confusion matrix, precision, recall, and F1 score
@@ -390,7 +390,7 @@ def evaluateModel(model, test_loader, device):
     pass
 
 
-def SentimentAnalysis(model_cls):
+def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
     """sumary_line
         1. Data Preperation
         2. Model architecture
@@ -412,7 +412,6 @@ def SentimentAnalysis(model_cls):
     # 4. Evaluate Model
     evaluateModel(model, test_loader, device)              
 
-    pass
 
 def Problem1():
     """
