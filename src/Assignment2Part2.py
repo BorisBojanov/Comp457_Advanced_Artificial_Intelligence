@@ -308,7 +308,6 @@ def prepareData(data: bool = False):
 
     return traindata, testdata, vocab
 
-
 def initializeModel(model_cls: type[RNN | LSTM | GRU]):
     """
     for all three models, initializeModel will need to take the class as a parameter
@@ -373,12 +372,25 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     # Return model, test_loader and device
     return model, test_loader, device
 
-    # TODO
-def evaluateModel(model: RNN | LSTM | GRU, test_loader, device):
+def evaluateModel(model: RNN | LSTM | GRU, test_loader: DataLoader, device: str):
     """evaluateModel
+        
+        Evaluate the model on the test set.
+        Reports accuracy, confusion matrix, precision, recall and F1 (positive class = 'pos' = 1).
+        Returns the metrics as a dict so Problem1 can compare models.
+
         Evaluate the model on the test set
         Report: accuracy, confusion matrix, precision, recall, and F1 score
-    
+
+        Perplexity:
+            We use perplexity as a metric to evaluate the performance of our RNN/LSTM model for sentiment analysis.
+            perplexity of sequence X:
+            - Perplexity = 1: Perfect model (always predicts the right token with probability 1)
+            - Perplexity = ∞ (infinity): Worst case (assigns probability 0 to true tokens)
+            - Perplexity = |vocabulary| (size of vocabulary): Baseline (uniform distribution over all words)
+            - Lower perplexity = better model
+
+
         wrap it in model.eval() and with torch.no_grad(): 
         Threshold the output with (model(x).squeeze(1) > 0.5).float() to get 0/1 predictions.
 
@@ -386,8 +398,62 @@ def evaluateModel(model: RNN | LSTM | GRU, test_loader, device):
     argument -- description
     Return: return_description
     """
+    model.eval()                                  # inference mode (apperently)
+    tp = 0
+    tn = 0
+    fp = 0
+    fn = 0
+
+    # torch.inference_mode()
+    # torch.enable_grad()
+    """
+    counting tp/tn/fp/fn per batch then compute the metrices once at the end
+        saves my sanity and memory   
+    """
+    with torch.no_grad():                         # no gradients needed, saves time and memory
+        for batchText, batchLabels in test_loader:
+            batchText = batchText.to(device)
+            batchLabels = batchLabels.to(device)
+            
+            probs = model(batchText).squeeze(1)  # [B, 1] -> [B], values in (0, 1)
+            preds = (probs > 0.5).float()         # threshold -> hard 0.0 / 1.0
+
+            
+            tp += ((preds == 1) & (batchLabels == 1)).sum().item()
+            tn += ((preds == 0) & (batchLabels == 0)).sum().item()
+            fp += ((preds == 1) & (batchLabels == 0)).sum().item()
+            fn += ((preds == 0) & (batchLabels == 1)).sum().item()
     
-    pass
+    total     = tp + tn + fp + fn
+    accuracy  = (tp + tn) / total
+    precision = tp / (tp + fp) if (tp + fp) else 0.0
+    recall    = tp / (tp + fn) if (tp + fn) else 0.0
+    f1        = 2 * precision * recall / (precision + recall) if (precision + recall) else 0.0
+
+    modelname = type(model).__name__
+
+    fancyString = f"""
+        --- {modelname} test results ---
+            Accuracy  : {accuracy:.4f}
+            Precision : {precision:.4f}
+            Recall    : {recall:.4f}
+            F1 score  : {f1:.4f}
+
+            Confusion matrix (rows = actual, cols = predicted):
+                        neg   |   pos
+                neg   {tn:6d} | {fp:6d}
+                pos   {fn:6d} | {tp:6d}
+    """
+    
+    print(fancyString)
+    fancydict = {
+                "model": modelname, 
+                "accuracy": accuracy, "precision": precision,
+                "recall": recall, "f1": f1, 
+                "confusion_matrix": [[tn, fp], [fn, tp]]
+    }
+    
+    return fancydict
 
 
 def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
@@ -422,10 +488,19 @@ def Problem1():
     argument -- description
     Return: return_description
     """
-    
+    results = []
+    for cls in (RNN, LSTM, GRU):
+        results.append(SentimentAnalysis(cls))
+        print(f"{'Model':<6} {'Acc':>7} {'Prec':>7} {'Rec':>7} {'F1':>7}")
+        for result in results:
+            print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
+
     SentimentAnalysis(RNN)
     # SentimentAnalysis(LSTM)
     # SentimentAnalysis(GRU)
+    # print(f"{'Model':<6} {'Acc':>7} {'Prec':>7} {'Rec':>7} {'F1':>7}")
+    # for r in results:
+    #             print(f"{r['model']:<6} {r['accuracy']:7.4f} {r['precision']:7.4f} {r['recall']:7.4f}{r['f1']:7.4f}")
 
 
 def example():
