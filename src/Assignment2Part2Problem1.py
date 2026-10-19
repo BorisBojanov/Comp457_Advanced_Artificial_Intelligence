@@ -103,6 +103,8 @@ EPOCHS = 5
 
 MAX_LEN = 200
 PAD, UNK = 0, 1
+TRAIN_LOSSES, TEST_LOSSES, TEST_ACCURACIES = [],[],[]
+
 
 def get_device() -> str:
     if torch.cuda.is_available():
@@ -221,6 +223,22 @@ class GRU(nn.Module):
         _, hidden = self.gru(embedded)
         return self.sigmoid(self.fc(hidden[-1]))
 
+# Plot the data
+def curvePlotter(train_losses: list, test_losses: list, test_accs: list):
+    """
+    Left: train_losses and test_losses — two lines, same axes (both are loss, same units, so they share a scaler).
+    Right: test_accs — its own axes.
+    """
+    fig, ax = plt.subplots(figsize=(6, 4))
+    ax.plot(train_losses, label="train loss")
+    ax.plot(test_losses, label="test loss")
+    ax.set_xlabel("Epochs")
+    ax.set_ylabel("cross-entropy loss")
+    ax.set_title("Training and Test Loss")
+    ax.legend() # makes a legend for multiple lines on the same plot
+    fig.savefig("data/figures/loss_plot.png", dpi=150, bbox_inches="tight")
+    # plt.show() # Will be called outside of this function
+
 
 # Helper functions for saving and loading models
 def _saveModel(model, path):
@@ -301,7 +319,7 @@ def loadDataset(trainOrtest: bool = False):
         listOfDicts = imdb_dataset(directory=str(DATA_DIR), test=True)
     
     # print(dictionaries[0:2])
-    """format of each test[i] is list containing i dictionaries
+    """format of each listOfDicts[i] is list containing i dictionaries
     {
           'text': 'For a movie that gets no respect there sure are a lot of memorable quotes...',
           'sentiment': 'pos'
@@ -319,7 +337,7 @@ def prepareData(data: bool = False):
         - pad sequences to the same length.
 
     Keyword arguments:
-    argument -- description
+    data -- to prepare train or test data
     Return: should return the DataLoader
     """
     train = loadDataset(True)
@@ -357,6 +375,21 @@ def initializeModel(model_cls: type[RNN | LSTM | GRU]):
 
     return model, device, criterion, optimizer
 
+def test(dataloader, model, loss_fn, device):
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    model.eval()
+    test_loss, correct = 0.0, 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
+    return correct, test_loss
 
 def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     """sumary_line
@@ -364,9 +397,12 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     list of dicts → (texts, labels) as tensors → TensorDataset → DataLoader → iterate in batches
 
     Keyword arguments:
-    argument -- description
-    Return: return_description
+    model_cls -- the type of the model that we want to train
+    Return: model, test_loader, device
     """
+    loss_fn = nn.CrossEntropyLoss()
+    train_losses, test_losses, test_accs = [], [], []
+
     train_loader, test_loader, vocab = prepareData()
     # ---RNN, LSTM, GRU ---
     model, device, criterion, optimizer = initializeModel(model_cls)
@@ -383,18 +419,30 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
             # Forward pass
             # predictions = model(batch_text)
             predictions = model(batch_text).squeeze(1)   # [B, 1] -> [B]
-
+            
             # Calculate loss
             loss = criterion(predictions, batch_labels)
-            
+            train_losses.append(loss)
             # Backward pass and weight updates
             loss.backward()
             optimizer.step()
-            
+
+            acc, te_loss  = test(test_loader, model, loss_fn, device)
+            test_accs.append(acc)
+            test_losses.append(te_loss)
+
             total_loss += loss.item()
             
         print(f"Epoch {epoch+1}/{EPOCHS} | Average Loss: {total_loss / len(train_loader):.4f}")
-
+    
+    # ---curve plotting---
+    curvePlotter(train_losses, test_losses, test_accs)
+    TRAIN_LOSSES = train_losses
+    TEST_LOSSES = test_losses
+    TEST_ACCURACIES = test_accs
+    plt.show()
+    # ---
+    
     # Return model, test_loader and device
     return model, test_loader, device
 
@@ -558,15 +606,6 @@ def Problem1():
     for result in results:
         print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
 
-def encodeWindow(tokens, target_idx, vocab, k=10):
-    ids = lambda ws: [vocab.get(w, UNK) for w in ws]
-    left  = ids(tokens[max(0, target_idx - k):target_idx])
-    right = ids(tokens[target_idx + 1:target_idx + 1 + k])
-    left  = [PAD] * (k - len(left)) + left
-    right = right + [PAD] * (k - len(right))
-    return left + ids([tokens[target_idx]]) + right      # length 2k+1, target at index k
-
-
 def example():
     """Source code for torchnlp.datasets.imdb
         https://pytorchnlp.readthedocs.io/en/latest/_modules/torchnlp/datasets/imdb.html
@@ -644,10 +683,6 @@ def example():
             return tuple(ret)
 
     imdb_dataset(directory=str(DATA_DIR), train=True)
-
-
-
-
 
 
 def main():

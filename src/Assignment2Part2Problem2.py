@@ -229,6 +229,21 @@ def trainingLoop(model_cls: type[WSDLSTM]):
     # Return model, test_loader and device
     return model, test_loader, device
 
+def test(dataloader, model, loss_fn, device):
+    size = len(dataloader.dataset)
+    num_batches = len(dataloader)
+    model.eval()
+    test_loss, correct = 0.0, 0
+    with torch.no_grad():
+        for X, y in dataloader:
+            X, y = X.to(device), y.to(device)
+            pred = model(X)
+            test_loss += loss_fn(pred, y).item()
+            correct += (pred.argmax(1) == y).type(torch.float).sum().item()
+    test_loss /= num_batches
+    correct /= size
+    print(f"Test:  accuracy {100 * correct:>5.1f}%  avg loss {test_loss:>8f}")
+    return correct, test_loss
        
 
 def evaluateModel(model: WSDLSTM, test_loader: DataLoader, device: str):
