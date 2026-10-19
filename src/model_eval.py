@@ -423,7 +423,7 @@ def plotEvaluation(results: dict, class_names=None, run_name: str = "run",
         _drawMetricBars(ax_bar, results, average, names)
 
         title = f"{run_name} - {split_label} set"
-        if "model" in results:
+        if results.get("model") and results["model"] not in run_name:
             title = f"{run_name} ({results['model']}) - {split_label} set"
         if "loss" in results:
             title += f"  |  loss {results['loss']:.4f}"

@@ -23,7 +23,10 @@ import os
 import glob
 
 from torchnlp.download import download_file_maybe_extract
+# Live training curves + evaluation charts (see model_eval.py)
+from model_eval import fit, evaluateAndPlot
 
+DOC_FIGS_NAME ="assignment2part2"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
 
@@ -183,7 +186,8 @@ def initializeModel(model_cls: type[WSDLSTM]):
         # criterion = nn.BCEWithLogitsLoss()
     model = model_cls(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM, MAX_LEN, UNK).to(device)
 
-    criterion = nn.BCELoss()
+    # WSD is multi-class: raw logits [B, num_senses] + integer sense labels, so CrossEntropyLoss (not BCELoss)
+    criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     return model, device, criterion, optimizer
 
@@ -193,41 +197,25 @@ def trainingLoop(model_cls: type[WSDLSTM]):
     
     list of dicts → (texts, labels) as tensors → TensorDataset → DataLoader → iterate in batches
 
+    fit() (model_eval.py) runs the epochs: it trains, scores the test loader once after every
+    epoch and redraws the loss / accuracy curves live. The curves are also saved to
+    data/figures/<run_name>_curves.png.
+
     Keyword arguments:
-    argument -- description
-    Return: return_description
+    model_cls -- the type of the model that we want to train
+    Return: model, test_loader, device, criterion
     """
     train_loader, test_loader, vocab = prepareData()
 
     # --- WSDLSTM ---
     model, device, criterion, optimizer = initializeModel(model_cls)
-    # Training Loop
-    model.train()
-    for epoch in range(EPOCHS):
-        total_loss = 0
-        for batch_text, batch_labels in train_loader:
-            batch_text, batch_labels = batch_text.to(device), batch_labels.to(device)
-            
-            # Reset gradients
-            optimizer.zero_grad()
-            
-            # Forward pass
-            # predictions = model(batch_text)
-            predictions = model(batch_text).squeeze(1)   # [B, 1] -> [B]
 
-            # Calculate loss
-            loss = criterion(predictions, batch_labels)
-            
-            # Backward pass and weight updates
-            loss.backward()
-            optimizer.step()
-            
-            total_loss += loss.item()
-            
-        print(f"Epoch {epoch+1}/{EPOCHS} | Average Loss: {total_loss / len(train_loader):.4f}")
+    # Training Loop (CrossEntropyLoss on the sense logits, same loss for training and the test curve)
+    fit(model, train_loader, test_loader, criterion, optimizer, device, EPOCHS,
+        run_name=f"{DOC_FIGS_NAME}_{model_cls.__name__}")
 
-    # Return model, test_loader and device
-    return model, test_loader, device
+    # Return model, test_loader, device and the loss function used for evaluation
+    return model, test_loader, device, criterion
 
 def test(dataloader, model, loss_fn, device):
     size = len(dataloader.dataset)
@@ -360,13 +348,16 @@ def wordSensDisambiguation(model_cls: type[WSDLSTM]):
     Return: return_description
     """
     # 1-3. Data preparation, model architecture and training all happen inside trainingLoop
-    model, test_loader, device = trainingLoop(model_cls)
-    
+    model, test_loader, device, criterion = trainingLoop(model_cls)
+
     path = MODEL_PATH
     _saveModel(model, path)
 
-    # 4. Evaluate Model (returns the metrics dict so Problem1 can compare models)
-    return evaluateModel(model, test_loader, device)
+    # 4. Evaluate Model: prints accuracy and macro precision / recall / F1, draws + saves the
+    #    confusion matrix and the metric bars, and returns the metrics dict for the comparison table.
+    #    Pass class_names=[sense names, in label order] once the SemCor sense inventory exists.
+    return evaluateAndPlot(model, test_loader, criterion, device,
+                           run_name=f"{DOC_FIGS_NAME}_{model_cls.__name__}")
 
 
 # ---Problem2---
@@ -421,85 +412,8 @@ def Problem2():
     for result in results:
         print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
 
-
-
-def example():
-    """Source code for torchnlp.datasets.imdb
-        https://pytorchnlp.readthedocs.io/en/latest/_modules/torchnlp/datasets/imdb.html
-        
-        Prerequisite:pip3 install pytorch-nlp
-
-    """
-
-    def imdb_dataset(directory='data/', train=False, test=False, train_directory='train', test_directory='test',extracted_name='aclImdb',
-                    check_files=['aclImdb/README'], url='http://ai.stanford.edu/~amaas/data/sentiment/aclImdb_v1.tar.gz', sentiments=['pos', 'neg']):
-        """
-        Load the IMDB dataset (Large Movie Review Dataset v1.0).
-
-        This is a dataset for binary sentiment classification containing substantially more data than
-        previous benchmark datasets. Provided a set of 25,000 highly polar movie reviews for
-        training, and 25,000 for testing. There is additional unlabeled data for use as well. Raw text
-        and already processed bag of words formats are provided.
-
-        Note:
-            The order examples are returned is not guaranteed due to ``iglob``.
-
-        Reference: http://ai.stanford.edu/~amaas/data/sentiment/
-
-        Args:
-            directory (str, optional): Directory to cache the dataset.
-            train (bool, optional): If to load the training split of the dataset.
-            test (bool, optional): If to load the test split of the dataset.
-            train_directory (str, optional): The directory of the training split.
-            test_directory (str, optional): The directory of the test split.
-            extracted_name (str, optional): Name of the extracted dataset directory.
-            check_files (str, optional): Check if these files exist, then this download was successful.
-            url (str, optional): URL of the dataset ``tar.gz`` file.
-            sentiments (list of str, optional): Sentiments to load from the dataset.
-
-        Returns:
-            :class:`tuple` of :class:`iterable` or :class:`iterable`:
-            Returns between one and all dataset splits (train, dev and test) depending on if their
-            respective boolean argument is ``True``.
-
-        Example:
-            >>> from torchnlp.datasets import imdb_dataset  # doctest: +SKIP
-            >>> train = imdb_dataset(train=True)  # doctest: +SKIP
-            >>> train[0:2]  # doctest: +SKIP
-            [{
-            'text': 'For a movie that gets no respect there sure are a lot of memorable quotes...',
-            'sentiment': 'pos'
-            }, {
-            'text': 'Bizarre horror movie filled with famous faces but stolen by Cristina Raines...',
-            'sentiment': 'pos'
-            }]
-        """
-        download_file_maybe_extract(url=url, directory=directory, check_files=check_files)
-
-        ret = []
-        splits = [
-            dir_ for (requested, dir_) in [(train, train_directory), (test, test_directory)]
-            if requested
-        ]
-        for split_directory in splits:
-            full_path = os.path.join(directory, extracted_name, split_directory)
-            examples = []
-            for sentiment in sentiments:
-                for filename in glob.iglob(os.path.join(full_path, sentiment, '*.txt')):
-                    with open(filename, 'r', encoding="utf-8") as f:
-                        text = f.readline()
-                    examples.append({
-                        'text': text,
-                        'sentiment': sentiment,
-                    })
-            ret.append(examples)
-
-        if len(ret) == 1:
-            return ret[0]
-        else:
-            return tuple(ret)
-
-    imdb_dataset(directory=str(DATA_DIR), train=True)
+    # One blocking call for every figure: the training curves and the evaluation chart
+    plt.show()
 
 
 

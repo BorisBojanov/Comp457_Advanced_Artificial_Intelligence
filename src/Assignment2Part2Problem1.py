@@ -91,6 +91,9 @@ import glob
 
 from torchnlp.download import download_file_maybe_extract
 
+# Live training curves + evaluation charts (see model_eval.py)
+from model_eval import fit, evaluateAndPlot
+DOC_FIGS_NAME ="assignment2part1"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
 
@@ -396,55 +399,24 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     
     list of dicts → (texts, labels) as tensors → TensorDataset → DataLoader → iterate in batches
 
+    fit() (model_eval.py) runs the epochs: it trains, scores the test loader once after every
+    epoch and redraws the loss / accuracy curves live. The curves are also saved to
+    data/figures/<run_name>_curves.png.
+
     Keyword arguments:
     model_cls -- the type of the model that we want to train
-    Return: model, test_loader, device
+    Return: model, test_loader, device, criterion
     """
-    loss_fn = nn.CrossEntropyLoss()
-    train_losses, test_losses, test_accs = [], [], []
-
     train_loader, test_loader, vocab = prepareData()
     # ---RNN, LSTM, GRU ---
     model, device, criterion, optimizer = initializeModel(model_cls)
-    # Training Loop
-    model.train()
-    for epoch in range(EPOCHS):
-        total_loss = 0
-        for batch_text, batch_labels in train_loader:
-            batch_text, batch_labels = batch_text.to(device), batch_labels.to(device)
-            
-            # Reset gradients
-            optimizer.zero_grad()
-            
-            # Forward pass
-            # predictions = model(batch_text)
-            predictions = model(batch_text).squeeze(1)   # [B, 1] -> [B]
-            
-            # Calculate loss
-            loss = criterion(predictions, batch_labels)
-            train_losses.append(loss)
-            # Backward pass and weight updates
-            loss.backward()
-            optimizer.step()
 
-            acc, te_loss  = test(test_loader, model, loss_fn, device)
-            test_accs.append(acc)
-            test_losses.append(te_loss)
+    # Training Loop (BCELoss on the sigmoid output, same loss for training and the test curve)
+    fit(model, train_loader, test_loader, criterion, optimizer, device, EPOCHS,
+        run_name=f"{DOC_FIGS_NAME}_{model_cls.__name__}")
 
-            total_loss += loss.item()
-            
-        print(f"Epoch {epoch+1}/{EPOCHS} | Average Loss: {total_loss / len(train_loader):.4f}")
-    
-    # ---curve plotting---
-    curvePlotter(train_losses, test_losses, test_accs)
-    TRAIN_LOSSES = train_losses
-    TEST_LOSSES = test_losses
-    TEST_ACCURACIES = test_accs
-    plt.show()
-    # ---
-    
-    # Return model, test_loader and device
-    return model, test_loader, device
+    # Return model, test_loader, device and the loss function used for evaluation
+    return model, test_loader, device, criterion
 
 
         
@@ -564,13 +536,15 @@ def SentimentAnalysis(model_cls: type[RNN | LSTM | GRU]):
     Return: return_description
     """
     # 1-3. Data preparation, model architecture and training all happen inside trainingLoop
-    model, test_loader, device = trainingLoop(model_cls)
-    
+    model, test_loader, device, criterion = trainingLoop(model_cls)
+
     path = MODEL_PATH
     _saveModel(model, path)
 
-    # 4. Evaluate Model (returns the metrics dict so Problem1 can compare models)
-    return evaluateModel(model, test_loader, device)
+    # 4. Evaluate Model: prints the metrics, draws + saves the confusion matrix and the
+    #    accuracy / precision / recall / F1 bars, and returns the metrics dict so Problem1 can compare models
+    return evaluateAndPlot(model, test_loader, criterion, device,
+                           run_name=f"{DOC_FIGS_NAME}_{model_cls.__name__}", class_names=["neg", "pos"])
 
 # ---Problem 1---
 def Problem1():
@@ -605,6 +579,9 @@ def Problem1():
     print(f"{'Model':<6} | {'Acc':>7} | {'Prec':>7} | {'Rec':>7} | {'F1':>7}")
     for result in results:
         print(f"{result['model']:<6} | {result['accuracy']:7.4f} | {result['precision']:7.4f} | {result['recall']:7.4f} | {result['f1']:7.4f}")
+
+    # One blocking call for every figure: the curves and the evaluation chart of each model
+    plt.show()
 
 def example():
     """Source code for torchnlp.datasets.imdb
