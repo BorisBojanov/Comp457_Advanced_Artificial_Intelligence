@@ -448,6 +448,193 @@ def evaluateAndPlot(model, loader, loss_fn, device, run_name: str = "run", class
 
 
 # ---------------------------------------------------------------------------------------
+# Per-group breakdown (e.g. one row per target word in word sense disambiguation)
+#
+# With hundreds of classes the full confusion matrix is unreadable (labels are hidden past
+# 30 classes). Splitting the test set by a group instead - the target word - gives one small,
+# readable result per word: accuracy, macro-F1 and, for the words you care about, a confusion
+# matrix over just that word's own senses.
+# ---------------------------------------------------------------------------------------
+
+def collectPredictions(model, loader, device, group_of=None, from_logits: bool = False) -> dict:
+    """Run `loader` once in eval mode and return numpy y_true / y_pred (and groups).
+
+    group_of(X) -> LongTensor of one group id per row of the batch. For the WSD LSTM the
+    target word's index is the last column of X, so group_of=lambda X: X[:, -1].
+    """
+    model.eval()
+    y_true, y_pred, groups = [], [], []
+    with torch.no_grad():
+        for X, y in loader:
+            if group_of is not None:
+                groups.append(group_of(X).long().cpu())
+            preds, _ = _predict(model(X.to(device)), from_logits)
+            y_true.append(y.long().cpu())
+            y_pred.append(preds.cpu())
+
+    out = {"y_true": torch.cat(y_true).numpy(), "y_pred": torch.cat(y_pred).numpy()}
+    if group_of is not None:
+        out["groups"] = torch.cat(groups).numpy()
+    return out
+
+
+def _macroF1(y_true, y_pred) -> float:
+    """Macro-F1 over the classes that occur in y_true or y_pred (same rule as computeMetrics)."""
+    f1s = []
+    for c in np.union1d(y_true, y_pred):
+        tp = float(((y_true == c) & (y_pred == c)).sum())
+        predicted, actual = float((y_pred == c).sum()), float((y_true == c).sum())
+        precision = tp / predicted if predicted else 0.0
+        recall = tp / actual if actual else 0.0
+        f1s.append(2 * precision * recall / (precision + recall) if precision + recall else 0.0)
+    return float(np.mean(f1s))
+
+
+def groupBreakdown(y_true, y_pred, groups, group_names, baseline_pred=None) -> list:
+    """One dict per group: support, #senses, accuracy, macro-F1 (+ baseline accuracy).
+
+    `baseline_pred` is an optional second set of predictions (e.g. always the most frequent
+    sense) scored on the same rows, so every group shows how much the model adds.
+    """
+    y_true, y_pred, groups = np.asarray(y_true), np.asarray(y_pred), np.asarray(groups)
+    rows = []
+    for g, name in enumerate(group_names):
+        pick = groups == g
+        n = int(pick.sum())
+        if n == 0:
+            continue
+        row = {"group": name, "n": n, "classes": int(len(np.unique(y_true[pick]))),
+               "accuracy": float((y_true[pick] == y_pred[pick]).mean()),
+               "f1": _macroF1(y_true[pick], y_pred[pick])}
+        if baseline_pred is not None:
+            row["baseline_accuracy"] = float((y_true[pick] == np.asarray(baseline_pred)[pick]).mean())
+        rows.append(row)
+    return rows
+
+
+def printGroupTable(rows: list, label: str = "word"):
+    has_base = any("baseline_accuracy" in r for r in rows)
+    head = f"{label:<12}{'n':>5}{'senses':>8}{'acc':>8}{'macro-F1':>10}" + (f"{'baseline':>10}" if has_base else "")
+    print(head)
+    for r in rows:
+        line = f"{r['group']:<12}{r['n']:>5}{r['classes']:>8}{r['accuracy']:>8.3f}{r['f1']:>10.3f}"
+        if has_base:
+            line += f"{r.get('baseline_accuracy', float('nan')):>10.3f}"
+        print(line)
+
+
+def plotGroupBreakdown(rows: list, run_name: str = "run", split_label: str = "test", label: str = "word",
+                       focus=None, out_dir: Path = FIGURES_DIR, save: bool = True):
+    """Horizontal bars: accuracy per group, with the baseline beside it when there is one.
+
+    `focus` groups (e.g. the three required target words) come first and in bold, the rest
+    follow ordered by how many test examples they have. n is printed in the row label because
+    a group with 5 examples says much less than one with 100.
+    """
+    focus = [f for f in (focus or []) if any(r["group"] == f for r in rows)]
+    first = [next(r for r in rows if r["group"] == f) for f in focus]
+    rest = sorted((r for r in rows if r["group"] not in focus), key=lambda r: -r["n"])
+    ordered = first + rest
+    has_base = any("baseline_accuracy" in r for r in ordered)
+
+    ypos = np.arange(len(ordered))[::-1]
+    h = 0.34 if has_base else 0.5
+    with plt.rc_context(_STYLE): # type: ignore
+        fig, ax = plt.subplots(figsize=(8.5, max(3.2, 0.5 * len(ordered) + 1.6)), layout="constrained")
+        offset = h / 2 + 0.02 if has_base else 0.0
+        ax.barh(ypos + offset, [r["accuracy"] for r in ordered], height=h, color=BLUE, label="model")
+        if has_base:
+            ax.barh(ypos - offset, [r.get("baseline_accuracy", 0.0) for r in ordered], height=h,
+                    color=AXIS, label="most-frequent-sense baseline")
+
+        for y, r in zip(ypos, ordered):
+            ax.text(r["accuracy"] + 0.012, y + offset, f"{r['accuracy']:.0%}", va="center", ha="left",
+                    fontsize=9, color=INK)
+            if has_base:
+                ax.text(r.get("baseline_accuracy", 0.0) + 0.012, y - offset, f"{r.get('baseline_accuracy', 0.0):.0%}",
+                        va="center", ha="left", fontsize=9, color=INK_2)
+
+        ax.set_yticks(ypos, [f"{r['group']}  (n={r['n']})" for r in ordered])
+        for tick, r in zip(ax.get_yticklabels(), ordered):
+            if r["group"] in focus:
+                tick.set_fontweight("bold")
+        ax.set_xlim(0, 1.1)
+        ax.set_xticks([0, 0.25, 0.5, 0.75, 1.0])
+        ax.xaxis.set_major_formatter(PercentFormatter(1.0, decimals=0))
+        ax.grid(axis="y", visible=False)
+        ax.tick_params(axis="y", length=0)
+        ax.spines["left"].set_visible(False)
+        ax.set_xlabel("accuracy")
+        ax.set_title(f"{run_name}: accuracy per {label} ({split_label} set)", loc="left", color=INK_2, fontsize=11)
+        if has_base:
+            ax.legend(loc="lower right", fontsize=9)
+
+    if save:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        fig.savefig(Path(out_dir) / f"{run_name}_by_{label}.png", dpi=150)
+    return fig
+
+
+def _shortName(name: str, width: int = 16) -> str:
+    return name if len(name) <= width else name[:width - 6] + "…" + name[-5:]
+
+
+def plotGroupConfusions(y_true, y_pred, groups, group_names, class_names, focus,
+                        run_name: str = "run", split_label: str = "test", label: str = "word",
+                        out_dir: Path = FIGURES_DIR, save: bool = True):
+    """One small confusion matrix per focus group, over only the classes that group uses.
+
+    Rows / columns are the classes that appear in that group's y_true or y_pred, so a word with
+    6 senses gets a 6x6 matrix instead of a slice of a 550x550 one.
+    """
+    y_true, y_pred, groups = np.asarray(y_true), np.asarray(y_pred), np.asarray(groups)
+    focus = [f for f in focus if f in group_names]
+    if not focus:
+        return None
+
+    with plt.rc_context(_STYLE): # type: ignore
+        fig, axes = plt.subplots(1, len(focus), figsize=(6.2 * len(focus), 5.4), layout="constrained",
+                                 squeeze=False)
+        for ax, name in zip(axes[0], focus):
+            pick = groups == group_names.index(name)
+            classes = np.union1d(y_true[pick], y_pred[pick])
+            index = {int(c): i for i, c in enumerate(classes)}
+            cm = np.zeros((len(classes), len(classes)), dtype=np.int64)
+            for t, p in zip(y_true[pick], y_pred[pick]):
+                cm[index[int(t)], index[int(p)]] += 1
+            names = [_shortName(class_names[int(c)]) if class_names is not None else str(int(c)) for c in classes]
+            _drawConfusion(fig, ax, cm, names)
+            plt.setp(ax.get_xticklabels(), rotation=45, ha="right")     # sense names are long: never side by side
+            ax.set_title(f"{name}  (n={int(pick.sum())}, accuracy {np.trace(cm) / cm.sum():.0%})",
+                         loc="left", color=INK_2, fontsize=11)
+        fig.suptitle(f"{run_name} - {split_label} set, per-{label} confusion", x=0.01, ha="left", fontsize=13)
+
+    if save:
+        Path(out_dir).mkdir(parents=True, exist_ok=True)
+        fig.savefig(Path(out_dir) / f"{run_name}_{label}_confusions.png", dpi=150)
+    return fig
+
+
+def evaluatePerGroup(y_true, y_pred, groups, group_names, class_names=None, baseline_pred=None,
+                     focus=None, run_name: str = "run", split_label: str = "test", label: str = "word",
+                     out_dir: Path = FIGURES_DIR) -> list:
+    """Per-group table + accuracy bars + small confusion matrices for the focus groups.
+
+    Works from plain arrays, so it fits any model: use collectPredictions() for a DataLoader
+    model, or pass predictions you computed yourself (e.g. the BERT sense ranking).
+    Returns the per-group rows. Figures are saved, never shown - call plt.show() once at the end.
+    """
+    rows = groupBreakdown(y_true, y_pred, groups, group_names, baseline_pred)
+    print(f"\n{run_name}: per-{label} results ({split_label} set)")
+    printGroupTable(rows, label)
+    plotGroupBreakdown(rows, run_name, split_label, label, focus, out_dir)
+    if focus:
+        plotGroupConfusions(y_true, y_pred, groups, list(group_names), class_names, list(focus),
+                            run_name, split_label, label, out_dir)
+    return rows
+
+
+# ---------------------------------------------------------------------------------------
 # Demo: python src/model_eval.py   (synthetic data, shows what the charts look like)
 # ---------------------------------------------------------------------------------------
 
