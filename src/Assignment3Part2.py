@@ -138,6 +138,7 @@ def loadExploreDataset(IMG_DIR: Path):
     # NAMES is from yaml of form: {0: 'person', 1: 'bicycle', 2: 'car', 3: 'motorcycle', 4: 'airplane', ...}
     NAMES = data["names"]
     # print(NAMES)
+    
 
     if not IMG_DIR.exists():   # first run: fetch the 7 MB zip (128 images of COCO train2017 + YOLO labels)
             import urllib.request, zipfile
@@ -365,13 +366,14 @@ def ssd():
     from torch.utils.data import DataLoader, Dataset
     from torchmetrics.detection import MeanAveragePrecision
     from torchvision import tv_tensors
-    from torchvision.io import decode_image
+    from torchvision.io import decode_image, ImageReadMode
     from torchvision.models.detection import SSD300_VGG16_Weights, ssd300_vgg16
     from torchvision.ops import box_iou
     from torchvision.transforms import v2
     from torchvision.utils import draw_bounding_boxes, save_image
     from ultralytics.data.converter import coco80_to_coco91_class
-
+    
+    DATA_DIR = ROOT / "data" / "coco128"
     DATA = DATA_DIR
     OUT = ROOT / "runs" / "ssd300"; OUT.mkdir(parents=True, exist_ok=True)
     DEVICE = torch.device("mps" if torch.backends.mps.is_available() else
@@ -421,22 +423,22 @@ def ssd():
             return len(self.files)
 
         def __getitem__(self, i):
-            from enum import Enum
-            class modeType(Enum):
-                UNCHANGED = 0
-                GRAY = 1
-                GRAY_ALPHA = 2
-                RGB = 3
-                RGB_ALPHA = 4
-                RGBA = RGB_ALPHA  # Alias for convenience
-            
-            img = decode_image(str(self.files[i]), mode="RGB")
+            img = decode_image(str(self.files[i]), mode=ImageReadMode.RGB)
             H, W = img.shape[-2:]
             cls, b = self._read(self.files[i])
             b = b * torch.tensor([W, H, W, H])
             xyxy = torch.cat([b[:, :2] - b[:, 2:] / 2, b[:, :2] + b[:, 2:] / 2], 1)  # centre -> corners
-            target = {"boxes": tv_tensors.BoundingBoxes(xyxy, format="XYXY", canvas_size=(H, W)),
-                    "labels": cls}
+            from torchvision.tv_tensors import BoundingBoxFormat
+
+            target = {
+                "boxes": tv_tensors.BoundingBoxes( 
+                    xyxy,
+                    format=BoundingBoxFormat.XYXY, 
+                    canvas_size=(int(H), int(W))
+                # pyright: ignore[reportCallIssue]
+                ), 
+                "labels": cls
+            }
             if self.transforms:
                 img, target = self.transforms(img, target)
             return img, target
@@ -511,7 +513,9 @@ def ssd():
                 tgts = [{"boxes": t["boxes"].to(DEVICE), "labels": t["labels"].to(DEVICE)} for t in tgts]
                 losses = model(imgs, tgts)                  # train mode -> dict of losses
                 loss = sum(losses.values())
-                opt.zero_grad(); loss.backward(); opt.step()
+                opt.zero_grad() 
+                loss.backward() # pyright: ignore[reportAttributeAccessIssue]
+                opt.step() 
                 for k in tot: tot[k] += losses[k].item() / len(loader)
             sched.step()
             val = evaluate(ssd_predict, val_ds)
@@ -547,8 +551,8 @@ def ssd():
                 arrs = [(i.permute(1, 2, 0) * 255).byte().numpy()[..., ::-1].copy() for i in imgs]
                 out = []
                 for r in yolo.predict(arrs, conf=0.001, imgsz=640, device=DEVICE.type if DEVICE.type != "cuda" else 0, verbose=False):
-                    b = r.boxes
-                    out.append({"boxes": b.xyxy, "scores": b.conf, "labels": to_coco[b.cls.long().cpu()]})
+                    b = r.boxes # pyright: ignore[reportAttributeAccessIssue]
+                    out.append({"boxes": b.xyxy, "scores": b.conf, "labels": to_coco[b.cls.long().cpu()]}) #pyright: ignore[reportOptionalMemberAccess, reportAttributeAccessIssue]
                 return out
             results["YOLOv5s"] = evaluate(yolo_predict, test_ds)
 
@@ -571,6 +575,65 @@ def ssd():
 
     # start the main loop
     ssd_main()
+    """ Expected output:
+    /opt/homebrew/Caskroom/miniforge/base/envs/Comp457/lib/python3.12/site-packages/torch/autograd/graph.py:979: UserWarning: index_put_with_accumulate_mps does not have a deterministic implementation, but you set 'torch.use_deterministic_algorithms(True, warn_only=True)'. You can file an issue at https://github.com/pytorch/pytorch/issues to help us prioritize adding deterministic support for this operation. (Triggered internally at /Users/runner/miniforge3/conda-bld/libtorch_1791515654910/work/aten/src/ATen/Context.cpp:190.)
+    return Variable._execution_engine.run_backward(  # Calls into the C++ engine to run the backward pass
+    [W1021 14:21:25.219179000 MPSFallback.mm:34] Warning: The operator 'torchvision::nms' is not currently supported on the MPS backend and will fall back to run on the CPU. This may have performance implications. (function operator())
+    epoch   1/30  box 1.182  cls 2.707  val mAP@0.5 0.675
+    epoch   2/30  box 1.067  cls 2.904  val mAP@0.5 0.522
+    epoch   3/30  box 1.456  cls 3.476  val mAP@0.5 0.560
+    epoch   4/30  box 1.376  cls 3.205  val mAP@0.5 0.519
+    epoch   5/30  box 1.489  cls 3.051  val mAP@0.5 0.568
+    epoch   6/30  box 1.335  cls 2.810  val mAP@0.5 0.550
+    epoch   7/30  box 1.206  cls 2.721  val mAP@0.5 0.581
+    epoch   8/30  box 1.158  cls 2.585  val mAP@0.5 0.621
+    epoch   9/30  box 1.132  cls 2.589  val mAP@0.5 0.607
+    epoch  10/30  box 1.041  cls 2.371  val mAP@0.5 0.616
+    epoch  11/30  box 1.014  cls 2.385  val mAP@0.5 0.525
+    epoch  12/30  box 1.025  cls 2.448  val mAP@0.5 0.552
+    epoch  13/30  box 1.047  cls 2.334  val mAP@0.5 0.597
+    epoch  14/30  box 0.924  cls 2.257  val mAP@0.5 0.622
+    epoch  15/30  box 0.909  cls 2.075  val mAP@0.5 0.618
+    epoch  16/30  box 0.873  cls 2.059  val mAP@0.5 0.618
+    epoch  17/30  box 0.932  cls 2.125  val mAP@0.5 0.609
+    epoch  18/30  box 0.910  cls 1.992  val mAP@0.5 0.613
+    epoch  19/30  box 0.879  cls 1.992  val mAP@0.5 0.610
+    epoch  20/30  box 0.864  cls 2.023  val mAP@0.5 0.613
+    epoch  21/30  box 0.892  cls 2.034  val mAP@0.5 0.606
+    epoch  22/30  box 0.913  cls 1.996  val mAP@0.5 0.612
+    epoch  23/30  box 0.822  cls 1.947  val mAP@0.5 0.611
+    epoch  24/30  box 0.859  cls 1.913  val mAP@0.5 0.620
+    epoch  25/30  box 0.842  cls 1.891  val mAP@0.5 0.618
+    epoch  26/30  box 0.885  cls 2.078  val mAP@0.5 0.617
+    epoch  27/30  box 0.862  cls 1.975  val mAP@0.5 0.615
+    epoch  28/30  box 0.791  cls 1.865  val mAP@0.5 0.609
+    epoch  29/30  box 0.913  cls 1.993  val mAP@0.5 0.609
+    epoch  30/30  box 0.734  cls 1.793  val mAP@0.5 0.609
+
+    model           mAP@0.5       P       R   ms/img     FPS
+    SSD300-VGG16      0.490   0.562   0.265     62.4    16.0
+    YOLOv5s           0.632   0.570   0.637     78.7    12.7
+    /opt/homebrew/Caskroom/miniforge/base/envs/Comp457/lib/python3.12/site-packages/torchvision/utils.py:352: UserWarning: boxes doesn't contain any box. No box was drawn
+    warnings.warn("boxes doesn't contain any box. No box was drawn")
+    
+    """
+
+def yolo2():
+    import torch
+
+    # Load a YOLOv5 model (options: yolov5n, yolov5s, yolov5m, yolov5l, yolov5x)
+    model = torch.hub.load("ultralytics/yolov5", "yolov5s")  # Default: yolov5s
+
+    # Define the input image source (URL, local file, PIL image, OpenCV frame, numpy array, or list)
+    img = "https://ultralytics.com/images/zidane.jpg"  # Example image
+
+    # Perform inference (handles batching, resizing, normalization automatically)
+    results = model(img) # pyright: ignore[reportCallIssue]
+
+    # Process the results (options: .print(), .show(), .save(), .crop(), .pandas())
+    results.print()  # Print results to console
+    results.show()  # Display results in a window
+    results.save()  # Save results to runs/detect/exp
 
 
 
@@ -581,8 +644,16 @@ def problem1():
         and split it into training and validation/test sets.
 
     b. Apply YOLOv5  and SSD object detection models.
-    c. Train the models on the training set. Apply relevant augmentations (flipping, scaling, colour jittering). Track training progress, and monitor loss and mean Average Precision (mAP).
-    d. Evaluate the models using a test set. Report the evaluation results in terms of the metrics mAP@0.5, precision, recall, and inference speed. Visualize detection outputs on at least 10 test images.
+    c. Train the models on the training set. Apply relevant augmentations (flipping, scaling, colour jittering). 
+        Track training progress, 
+        and monitor loss and mean Average Precision (mAP).
+    d. Evaluate the models using a test set. 
+        Report the evaluation results in terms of the metrics:
+            mAP@0.5, 
+            precision, 
+            recall, 
+            and inference speed. 
+        Visualize detection outputs on at least 10 test images.
 
     Notes:
         Ultralytics' stock coco128.yaml uses the same 128 images for train and val
@@ -591,18 +662,30 @@ def problem1():
             As a result test mAP (Acuracy) is expected to be inflated. 
     """
 
-    # loadExploreDataset(IMG_DIR)
+    loadExploreDataset(IMG_DIR)
 
+    """Each method:
+        fine-tune YOLOv5 | SSD300-VGG16 on the COCO128 train-split dataset
+        trains
+        Show Training curves 
+            (box/cls/dfl loss, precision, recall, mAP50, mAP50-95 per epoch) 
 
-    # yolo()
+            The training curves are saved to: "runs/[model name]/" 
+            within: "results.csv" & "results.png" 
+        evaluate on the held-out TEST split
+        visualise detections
+    """
+    yolo()
     ssd()
 
-
+def problem2():
+    pass
 
 
     
 def main():
-    problem1()
+    # problem1()
+    problem2()
 
 if __name__ == "__main__":
     main()

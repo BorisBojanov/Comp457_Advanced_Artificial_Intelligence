@@ -9,6 +9,8 @@ dependencies:
   - matplotlib
   - nltk
   - scikit-learn
+  - pycocotools     # torchmetrics MeanAveragePrecision backend (Assignment 3 Part 2)
+                    # `MAP` metric requires that `pycocotools` or `faster-coco-eval`
   - pip
   - pip:
     - transformers

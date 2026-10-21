@@ -1,0 +1,182 @@
+[
+ {
+  "epoch": 1,
+  "bbox_regression": 1.1818323685572696,
+  "classification": 2.7073826973254858,
+  "val_mAP50": 0.6748729348182678
+ },
+ {
+  "epoch": 2,
+  "bbox_regression": 1.0668188562759986,
+  "classification": 2.9038316469926104,
+  "val_mAP50": 0.5216565132141113
+ },
+ {
+  "epoch": 3,
+  "bbox_regression": 1.4564267947123601,
+  "classification": 3.4758829703697787,
+  "val_mAP50": 0.5600711107254028
+ },
+ {
+  "epoch": 4,
+  "bbox_regression": 1.3764314330541174,
+  "classification": 3.204836478600135,
+  "val_mAP50": 0.5192204117774963
+ },
+ {
+  "epoch": 5,
+  "bbox_regression": 1.4889862812482395,
+  "classification": 3.0508521520174465,
+  "val_mAP50": 0.5684859752655029
+ },
+ {
+  "epoch": 6,
+  "bbox_regression": 1.3345687481073234,
+  "classification": 2.8096554462726298,
+  "val_mAP50": 0.55036461353302
+ },
+ {
+  "epoch": 7,
+  "bbox_regression": 1.2060582637786865,
+  "classification": 2.7208593075092025,
+  "val_mAP50": 0.5809746384620667
+ },
+ {
+  "epoch": 8,
+  "bbox_regression": 1.1575614305642934,
+  "classification": 2.5854289806806126,
+  "val_mAP50": 0.6214084625244141
+ },
+ {
+  "epoch": 9,
+  "bbox_regression": 1.1324702180348911,
+  "classification": 2.5892971203877377,
+  "val_mAP50": 0.606601893901825
+ },
+ {
+  "epoch": 10,
+  "bbox_regression": 1.0413297827427204,
+  "classification": 2.370969212972201,
+  "val_mAP50": 0.6162758469581604
+ },
+ {
+  "epoch": 11,
+  "bbox_regression": 1.014463553061852,
+  "classification": 2.3853340790821957,
+  "val_mAP50": 0.5249970555305481
+ },
+ {
+  "epoch": 12,
+  "bbox_regression": 1.0250778885988088,
+  "classification": 2.448086270919213,
+  "val_mAP50": 0.5517752170562744
+ },
+ {
+  "epoch": 13,
+  "bbox_regression": 1.0469192633262048,
+  "classification": 2.3340729750119724,
+  "val_mAP50": 0.5973600149154663
+ },
+ {
+  "epoch": 14,
+  "bbox_regression": 0.9241061852528499,
+  "classification": 2.2567733984727125,
+  "val_mAP50": 0.621746301651001
+ },
+ {
+  "epoch": 15,
+  "bbox_regression": 0.908650719202482,
+  "classification": 2.075133983905499,
+  "val_mAP50": 0.6175059676170349
+ },
+ {
+  "epoch": 16,
+  "bbox_regression": 0.8727325659531814,
+  "classification": 2.059216233400198,
+  "val_mAP50": 0.6180265545845032
+ },
+ {
+  "epoch": 17,
+  "bbox_regression": 0.9315533981873437,
+  "classification": 2.125432390433091,
+  "val_mAP50": 0.6094938516616821
+ },
+ {
+  "epoch": 18,
+  "bbox_regression": 0.9104213577050428,
+  "classification": 1.9923419035398044,
+  "val_mAP50": 0.6132007241249084
+ },
+ {
+  "epoch": 19,
+  "bbox_regression": 0.8794945868162007,
+  "classification": 1.9920436602372387,
+  "val_mAP50": 0.610293984413147
+ },
+ {
+  "epoch": 20,
+  "bbox_regression": 0.8638804852962495,
+  "classification": 2.022675129083487,
+  "val_mAP50": 0.6129328012466431
+ },
+ {
+  "epoch": 21,
+  "bbox_regression": 0.8919320519153889,
+  "classification": 2.034145529453571,
+  "val_mAP50": 0.6063134074211121
+ },
+ {
+  "epoch": 22,
+  "bbox_regression": 0.9127037479327276,
+  "classification": 1.996376000917875,
+  "val_mAP50": 0.611724317073822
+ },
+ {
+  "epoch": 23,
+  "bbox_regression": 0.822195222744575,
+  "classification": 1.9468578558701735,
+  "val_mAP50": 0.6109545826911926
+ },
+ {
+  "epoch": 24,
+  "bbox_regression": 0.8588470495664154,
+  "classification": 1.912950405707726,
+  "val_mAP50": 0.6196345686912537
+ },
+ {
+  "epoch": 25,
+  "bbox_regression": 0.8422751655945412,
+  "classification": 1.890760586811946,
+  "val_mAP50": 0.6178342700004578
+ },
+ {
+  "epoch": 26,
+  "bbox_regression": 0.8850714564323424,
+  "classification": 2.078118498508747,
+  "val_mAP50": 0.6170087456703186
+ },
+ {
+  "epoch": 27,
+  "bbox_regression": 0.8615993077938375,
+  "classification": 1.9746408829322228,
+  "val_mAP50": 0.6153707504272461
+ },
+ {
+  "epoch": 28,
+  "bbox_regression": 0.7909971246352563,
+  "classification": 1.8645364412894614,
+  "val_mAP50": 0.6093433499336243
+ },
+ {
+  "epoch": 29,
+  "bbox_regression": 0.9132018180993887,
+  "classification": 1.9930307681743915,
+  "val_mAP50": 0.6093218922615051
+ },
+ {
+  "epoch": 30,
+  "bbox_regression": 0.7336166271796594,
+  "classification": 1.7927131194334764,
+  "val_mAP50": 0.6093218922615051
+ }
+]
