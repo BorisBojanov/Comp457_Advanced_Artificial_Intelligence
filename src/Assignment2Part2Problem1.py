@@ -88,14 +88,20 @@ from collections import Counter
 
 import os
 import glob
+import json
+import time
+import argparse
+from functools import lru_cache
 
 from torchnlp.download import download_file_maybe_extract
 
 # Live training curves + evaluation charts (see model_eval.py)
-from model_eval import fit, evaluateAndPlot
+from model_eval import fit, evaluateAndPlot, evaluateLoader
 DOC_FIGS_NAME ="assignment2part1"
 DATA_DIR = Path(__file__).resolve().parent.parent / "data"
 MODEL_PATH = Path(__file__).resolve().parent.parent / "model.pth"
+GLOVE_DIR = DATA_DIR / "glove"                   # glove.6B.<dim>d.txt from https://nlp.stanford.edu/projects/glove/
+SWEEP_DIR = DATA_DIR / "figures" / "sweep"       # curves, history and results.json of the task 5 experiments
 
 # Hyperparameters
 VOCAB_SIZE = 1000       # Size of each dictionary / vocabulary
@@ -106,6 +112,7 @@ EPOCHS = 5
 
 MAX_LEN = 200
 PAD, UNK = 0, 1
+SEED = 0
 TRAIN_LOSSES, TEST_LOSSES, TEST_ACCURACIES = [],[],[]
 
 
@@ -115,6 +122,13 @@ def get_device() -> str:
     if torch.backends.mps.is_available():
         return "mps"
     return "cpu"
+
+
+def makeEmbedding(vocab_size, embedding_dim, pretrained=None, freeze=False) -> nn.Embedding:
+    """Randomly initialised embedding, or one that starts from a pretrained [vocab_size, embedding_dim] matrix."""
+    if pretrained is None:
+        return nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
+    return nn.Embedding.from_pretrained(pretrained.clone(), freeze=freeze, padding_idx=PAD)
 
 
 class RNN(nn.Module):
@@ -127,11 +141,12 @@ class RNN(nn.Module):
     Return: return_description
     """
     
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1, pretrained=None, freeze=False):
         super().__init__()
 
         # 1. Embedding Layer: Maps word indices to dense vectors (embeddings)
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
+        #    pretrained = [vocab_size, embedding_dim] tensor (GloVe) to start from, freeze = keep it fixed
+        self.embedding = makeEmbedding(vocab_size, embedding_dim, pretrained, freeze)
         
         """
         2. RNN Layer: Processes sequences of text
@@ -175,9 +190,9 @@ class RNN(nn.Module):
         return out
 
 class LSTM(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1, pretrained=None, freeze=False):
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
+        self.embedding = makeEmbedding(vocab_size, embedding_dim, pretrained, freeze)
         """
                 N ={} & text{batch size} \\
                 L ={} & text{sequence length} \\
@@ -214,9 +229,9 @@ class LSTM(nn.Module):
         return self.sigmoid(self.fc(hidden[-1]))
 
 class GRU(nn.Module):
-    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1):
+    def __init__(self, vocab_size, embedding_dim, hidden_dim, output_dim=1, num_layers=1, pretrained=None, freeze=False):
         super().__init__()
-        self.embedding = nn.Embedding(vocab_size, embedding_dim, padding_idx=PAD)
+        self.embedding = makeEmbedding(vocab_size, embedding_dim, pretrained, freeze)
         self.gru = nn.GRU(embedding_dim, hidden_dim, batch_first=True)
         self.fc = nn.Linear(hidden_dim, output_dim)
         self.sigmoid = nn.Sigmoid()
@@ -255,6 +270,7 @@ def _loadModel(model: RNN | LSTM | GRU, path: Path, device: str = "mps") -> RNN 
     print(f"Loaded PyTorch Model State from {path}")
     return model
 
+@lru_cache(maxsize=None)          # the same 50,000 reviews are tokenized by every experiment, so do it once
 def tokenize(text):
     text = re.sub(r"<br\s*/?>", " ", text.lower())   # IMDB reviews contain <br /> tags
     return re.findall(r"[a-z']+", text)
@@ -289,12 +305,12 @@ def encode(text, vocab, max_len=MAX_LEN):
     padding = [PAD] * (max_len - len(ids))                         # how many pads are needed
     return padding + ids                                           # left-pad
 
-def toDataLoader(examples, vocab, shuffle: bool =False):
+def toDataLoader(examples, vocab, shuffle: bool =False, max_len: int = MAX_LEN):
 
     # --- texts: list of dicts -> list of padded int lists -> tensor
     texts = []
     for example in examples:
-        texts.append(encode(example['text'], vocab))
+        texts.append(encode(example['text'], vocab, max_len))
     textTensors = torch.tensor(texts,dtype=torch.long)
 
     # --- labels: 'pos' -> 1.0, 'neg' -> 0.0
@@ -311,6 +327,7 @@ def toDataLoader(examples, vocab, shuffle: bool =False):
     data = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=shuffle)
     return data
 
+@lru_cache(maxsize=None)          # reading 25,000 files per split once is enough
 def loadDataset(trainOrtest: bool = False):
     from torchnlp.datasets import imdb_dataset
     # Load the IMDB dataset for training then prints some examples
@@ -330,7 +347,7 @@ def loadDataset(trainOrtest: bool = False):
     """
     return listOfDicts
 
-def prepareData(data: bool = False):
+def prepareData(data: bool = False, vocab_size: int = VOCAB_SIZE, max_len: int = MAX_LEN):
     """prepareData
     This is the main data pipeline.
     Load the data apply the steps below and return the tokenized version
@@ -348,15 +365,16 @@ def prepareData(data: bool = False):
 
     # convert tokens to integer sequences using a vocabulary
     # pad sequences to the same length
-    vocab = buildVocab(train)            # build from TRAIN only, reuse for test
+    vocab = buildVocab(train, vocab_size)            # build from TRAIN only, reuse for test
 
     # Apply batch_size and shuffle them
-    traindata = toDataLoader(train, vocab, True)
-    testdata = toDataLoader(test, vocab, False)
+    traindata = toDataLoader(train, vocab, True, max_len)
+    testdata = toDataLoader(test, vocab, False, max_len)
 
     return traindata, testdata, vocab
 
-def initializeModel(model_cls: type[RNN | LSTM | GRU]):
+def initializeModel(model_cls: type[RNN | LSTM | GRU], vocab_size: int = VOCAB_SIZE, embedding_dim: int = EMBEDDING_DIM,
+                    pretrained=None, freeze: bool = False):
     """
     for all three models, initializeModel will need to take the class as a parameter
     
@@ -370,11 +388,11 @@ def initializeModel(model_cls: type[RNN | LSTM | GRU]):
 
     # Initialize Model, Loss, and Optimizer
     # model = RNN(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM).to(device)
-    model = model_cls(VOCAB_SIZE, EMBEDDING_DIM, HIDDEN_DIM).to(device)
+    model = model_cls(vocab_size, embedding_dim, HIDDEN_DIM, pretrained=pretrained, freeze=freeze).to(device)
 
     # criterion = nn.BCEWithLogitsLoss()
     criterion = nn.BCELoss()
-    optimizer = optim.Adam(model.parameters(), lr=0.001)
+    optimizer = optim.Adam([p for p in model.parameters() if p.requires_grad], lr=0.001)   # a frozen embedding has nothing to update
 
     return model, device, criterion, optimizer
 
@@ -407,6 +425,7 @@ def trainingLoop(model_cls: type[RNN | LSTM | GRU]):
     model_cls -- the type of the model that we want to train
     Return: model, test_loader, device, criterion
     """
+    torch.manual_seed(SEED)
     train_loader, test_loader, vocab = prepareData()
     # ---RNN, LSTM, GRU ---
     model, device, criterion, optimizer = initializeModel(model_cls)
@@ -583,6 +602,146 @@ def Problem1():
     # One blocking call for every figure: the curves and the evaluation chart of each model
     plt.show()
 
+
+# ---Problem 1, task 5: embedding sizes, sequence lengths and pre-trained (GloVe) embeddings---
+
+def loadGlove(vocab: dict, vocab_size: int, dim: int) -> torch.Tensor:
+    """[vocab_size, dim] matrix whose row i is the GloVe vector of the word with id i.
+
+    Words GloVe has no vector for (and <unk>) get a small random vector, <pad> stays all zeros.
+    Needs data/glove/glove.6B.<dim>d.txt (dim = 50, 100, 200 or 300).
+    """
+    path = GLOVE_DIR / f"glove.6B.{dim}d.txt"
+    weights = torch.randn(vocab_size, dim) * 0.1
+    weights[PAD] = 0.0
+    found = 0
+    with open(path, encoding="utf-8") as f:
+        for line in f:
+            word, _, rest = line.partition(" ")
+            idx = vocab.get(word)                           # only parse the lines for words we use
+            if idx is not None:
+                weights[idx] = torch.tensor([float(x) for x in rest.split()])
+                found += 1
+    print(f"GloVe {dim}d: found a vector for {found} of {len(vocab)} vocabulary words")
+    return weights
+
+
+def runExperiment(model_cls: type[RNN | LSTM | GRU], tag: str, vocab_size: int = VOCAB_SIZE,
+                  embedding_dim: int = EMBEDDING_DIM, max_len: int = MAX_LEN,
+                  glove: bool = False, freeze: bool = False, seed: int = SEED) -> dict:
+    """Train + evaluate one model with one setting. Same seed, optimizer, loss and epochs as Problem1,
+    only the setting changes. Curves and history go to data/figures/sweep/, no window is opened."""
+    torch.manual_seed(seed)
+    train_loader, test_loader, vocab = prepareData(vocab_size=vocab_size, max_len=max_len)
+    pretrained = loadGlove(vocab, vocab_size, embedding_dim) if glove else None
+    model, device, criterion, optimizer = initializeModel(model_cls, vocab_size, embedding_dim, pretrained, freeze)
+
+    name = f"{model_cls.__name__}_{tag}"
+    start = time.time()
+    history = fit(model, train_loader, test_loader, criterion, optimizer, device, EPOCHS,
+                  run_name=f"{DOC_FIGS_NAME}_{name}", live=False, out_dir=SWEEP_DIR)
+    seconds = time.time() - start
+
+    r = evaluateLoader(model, test_loader, criterion, device)
+    best = max(range(EPOCHS), key=lambda i: history["val_acc"][i])
+    print(f"{name}: acc {r['accuracy']:.4f}  prec {r['precision']:.4f}  rec {r['recall']:.4f}  f1 {r['f1']:.4f}  ({seconds:.0f}s)")
+    return {"name": name, "model": model_cls.__name__, "tag": tag, "seed": seed, "vocab_size": vocab_size,
+            "embedding_dim": embedding_dim, "max_len": max_len,
+            "embedding": ("GloVe frozen" if freeze else "GloVe fine-tuned") if glove else "random",
+            "accuracy": r["accuracy"], "precision": r["precision"], "recall": r["recall"], "f1": r["f1"],
+            "confusion_matrix": r["confusion_matrix"], "test_loss": r["loss"], "seconds": seconds,
+            "best_epoch": best + 1, "best_val_acc": history["val_acc"][best],
+            "train_acc": history["train_acc"][-1], "history": history}
+
+
+# (tag, vocab_size, embedding_dim, max_len, glove, freeze). The first rows change one thing at a time
+# from the Problem 1 setting (vocab 1000, 100 dims, length 200); the rest add GloVe.
+SETTINGS = [
+    ("base",             1000, 100, 200, False, False),
+    ("vocab10k",        10000, 100, 200, False, False),
+    ("vocab10k_glove_frozen", 10000, 100, 200, True, True),
+    ("vocab10k_glove_tuned",  10000, 100, 200, True, False),
+    ("dim50",            1000,  50, 200, False, False),
+    ("dim200",           1000, 200, 200, False, False),
+    ("len100",           1000, 100, 100, False, False),
+    ("len400",           1000, 100, 400, False, False),
+    ("glove_frozen",     1000, 100, 200, True, True),
+    ("glove_tuned",      1000, 100, 200, True, False),
+    ("vocab10k_glove_tuned_d50",  10000,  50, 200, True, False),
+    ("vocab10k_glove_tuned_d200", 10000, 200, 200, True, False),
+]
+SEED_RUNS = (1, 2)      # the base setting is repeated with these seeds to see how much a result moves by chance
+
+
+def loadSweepResults() -> list:
+    """Every finished run, from data/figures/sweep/results_<model>.json."""
+    results = []
+    for path in sorted(SWEEP_DIR.glob("results_*.json")):
+        results += json.loads(path.read_text())
+    order = {s[0]: i for i, s in enumerate(SETTINGS)}
+    models = {"RNN": 0, "LSTM": 1, "GRU": 2}
+    return sorted(results, key=lambda r: (order.get(r["tag"], 99), r["tag"], models[r["model"]]))
+
+
+def Experiments(models=(RNN, LSTM, GRU), extras_only: bool = False):
+    """Task 5: RNN, LSTM and GRU across embedding sizes, sequence lengths, vocabulary sizes and GloVe.
+
+    Each model keeps its own results_<model>.json (so LSTM and GRU can train in two processes at
+    once), written after every run. Runs already in the file are skipped, so an interrupted
+    sweep can simply be started again. extras_only runs just the last two settings and the repeated
+    seeds, into its own results file, so a slow model can be shared between two processes.
+    """
+    SWEEP_DIR.mkdir(parents=True, exist_ok=True)
+    for cls in models:
+        path = SWEEP_DIR / f"results_{cls.__name__}{'_extra' if extras_only else ''}.json"
+        results = json.loads(path.read_text()) if path.exists() else []
+        done = {r["name"] for r in results}
+
+        for tag, vocab_size, dim, max_len, glove, freeze in (SETTINGS[-2:] if extras_only else SETTINGS):
+            if f"{cls.__name__}_{tag}" in done:
+                continue
+            results.append(runExperiment(cls, tag, vocab_size, dim, max_len, glove, freeze))
+            path.write_text(json.dumps(results, indent=1))
+
+        for seed in SEED_RUNS:
+            if f"{cls.__name__}_base_seed{seed}" in done:
+                continue
+            results.append(runExperiment(cls, f"base_seed{seed}", seed=seed))
+            path.write_text(json.dumps(results, indent=1))
+
+
+def sweepSummary():
+    """Table + chart of everything the sweep has finished so far."""
+    results = loadSweepResults()
+    printSweep(results)
+    plotSweep(results)
+
+
+def printSweep(results: list):
+    header = f"{'Run':<28} {'Embedding':<17} {'Vocab':>5} {'Dim':>4} {'Len':>4} | {'Acc':>6} {'Prec':>6} {'Rec':>6} {'F1':>6} | {'Best ep':>7}"
+    print("\n" + header)
+    for r in results:
+        print(f"{r['name']:<28} {r['embedding']:<17} {r['vocab_size']:>5} {r['embedding_dim']:>4} {r['max_len']:>4} | "
+              f"{r['accuracy']:6.4f} {r['precision']:6.4f} {r['recall']:6.4f} {r['f1']:6.4f} | {r['best_epoch']:>7}")
+
+
+def plotSweep(results: list):
+    """Test accuracy of every setting, LSTM next to GRU -> data/figures/sweep/summary.png"""
+    tags = [s[0] for s in SETTINGS if any(r["tag"] == s[0] for r in results)]
+    fig, ax = plt.subplots(figsize=(13, 4.5))
+    width = 0.27
+    for k, cls in enumerate(("RNN", "LSTM", "GRU")):
+        accs = [next((r["accuracy"] for r in results if r["tag"] == t and r["model"] == cls), 0) for t in tags]
+        bars = ax.bar([i + (k - 1) * width for i in range(len(tags))], accs, width, label=cls)
+        ax.bar_label(bars, labels=[f"{a:.0%}" for a in accs], fontsize=6, padding=2)
+    ax.set_xticks(range(len(tags)), tags, rotation=30, ha="right")
+    ax.set_ylim(0.4, 1.0)
+    ax.set_ylabel("test accuracy")
+    ax.set_title("Problem 1 task 5: embedding size, sequence length, vocabulary and GloVe")
+    ax.legend(ncol=3, loc="upper left")
+    fig.savefig(SWEEP_DIR / "summary.png", dpi=150, bbox_inches="tight")
+
+
 def example():
     """Source code for torchnlp.datasets.imdb
         https://pytorchnlp.readthedocs.io/en/latest/_modules/torchnlp/datasets/imdb.html
@@ -663,7 +822,19 @@ def example():
 
 
 def main():
-    Problem1()
+    parser = argparse.ArgumentParser(description="COMP 457 Problem 1: sentiment analysis on IMDb")
+    parser.add_argument("--sweep", nargs="*", choices=["RNN", "LSTM", "GRU"], metavar="MODEL",
+                        help="task 5: LSTM/GRU across embedding sizes, sequence lengths, vocabulary sizes and GloVe "
+                             "(--sweep LSTM or --sweep GRU runs just one, so two terminals can share the work)")
+    parser.add_argument("--extras-only", action="store_true", help="with --sweep: only the GloVe-size runs and repeated seeds")
+    parser.add_argument("--summary", action="store_true", help="print the sweep table and draw the sweep chart")
+    args = parser.parse_args()
+    if args.summary:
+        sweepSummary()
+    elif args.sweep is not None:
+        Experiments(tuple({"RNN": RNN, "LSTM": LSTM, "GRU": GRU}[m] for m in args.sweep) if args.sweep else (RNN, LSTM, GRU), args.extras_only)
+    else:
+        Problem1()
 
 if __name__ == "__main__":
     main()
