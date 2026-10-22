@@ -1,5 +1,5 @@
 """
-Assignment 3 coding problems in part 2 of assignment
+Assignment 3 coding problem 1
 
 Problem 1
 Implement an object detection model using a pre-trained deep learning architecture (e.g., YOLO) to detect and classify objects in images. 
@@ -16,21 +16,6 @@ Setup:
     conda activate Comp457
 
     python src/Assignment3Part2.py
-
-Problem 2
-Implement an image segmentation model using 
-    deep learning to segment objects from images at the pixel level. 
-    Explore architectures U-Net, DeepLabV3, 
-        and Mask R-CNN for segmentation purposes. 
-    Use the Pascal VOC segmentation dataset for this problem.
-
-In this problem, perform the following tasks:
-    a. Load and inspect the dataset (images and masks). Resize, normalize, and apply any augmentations (e.g., flips, rotations). Split the dataset into training and test sets.
-    b. Use U-Net, DeepLabV3, and Mask R-CNN for the segmentation.
-    c. Train the models using appropriate loss functions, such as binary cross-entropy, dice loss, and IoU. Track the training progress (e.g., loss, dice score, etc.).
-    d. Evaluate the performance using IoU, dice coefficient, pixel accuracy, and by visualizing outputs by overlaying masks on original images.
-    e. Use a pre-trained model (e.g., ResNet or MobileNet). Add post-processing (e.g., CRFs or morphological ops). Compare the performances side by side.
-
 
 """
 import os
@@ -60,12 +45,14 @@ from ultralytics.utils import YAML  # only used to read the class names
 from ultralytics.utils.checks import check_yaml
 
 from model_eval import fit, evaluateAndPlot, evaluateLoader
+DOC_FIGS_NAME ="assignment3part2problem1"
 
 ROOT = Path(__file__).resolve().parent
 DATA = ROOT / "data" / "coco128" / "coco128_split.yaml"
 DATA_DIR = ROOT / "data" / "coco128"
 IMG_DIR = DATA_DIR / "images" / "train2017"
 LABEL_DIR = DATA_DIR / "labels" / "train2017"
+YOLO_MODEL_PATH = ROOT / "yolov5su.pt"
 
 def get_device(model: YOLO) -> str:
     if torch.cuda.is_available():
@@ -207,7 +194,7 @@ def yolo():
     """
     # yolov5su.pt = YOLOv5-small, COCO-pretrained, re-released by Ultralytics with an anchor-free head.
     # (The original anchor-based repo is github.com/ultralytics/yolov5 — `python train.py --weights yolov5s.pt`.)
-    yolo_model = YOLO("yolov5su.pt")
+    yolo_model = YOLO("YOLO_MODEL_PATH")
     print(get_device(yolo_model))
     DEVICE = "mps"        # Mac: "mps" | NVIDIA: 0 | fallback: "cpu"
     EPOCHS = 30
@@ -635,8 +622,6 @@ def yolo2():
     results.show()  # Display results in a window
     results.save()  # Save results to runs/detect/exp
 
-
-
 def problem1():
     """
     a. Load and explore the dataset (classes, annotation formats, etc.), 
@@ -678,14 +663,8 @@ def problem1():
     yolo()
     ssd()
 
-def problem2():
-    pass
-
-
-    
 def main():
-    # problem1()
-    problem2()
+    problem1()
 
 if __name__ == "__main__":
     main()
