@@ -54,7 +54,11 @@ IMG_DIR = DATA_DIR / "images" / "train2017"
 LABEL_DIR = DATA_DIR / "labels" / "train2017"
 YOLO_MODEL_PATH = ROOT / "yolov5su.pt"
 
-def get_device(model: YOLO) -> str:
+PERCENT_TRAIN = 0.80
+PERCENT_VAL = 0.10
+SHUFFLE_SEED = 'the meaning of life 42'
+
+def get_device() -> str:
     if torch.cuda.is_available():
         return "cuda"
     elif torch.backends.mps.is_available():
@@ -152,8 +156,12 @@ def loadExploreDataset(IMG_DIR: Path):
     
     plt.figure(figsize=(10, 4))
     plt.bar([NAMES[c] for c, _ in top], [n for _, n in top])
-    plt.xticks(rotation=60, ha="right"); plt.ylabel("boxes"); plt.title("COCO128 – 20 most frequent classes")
-    plt.tight_layout(); plt.savefig("p1_class_hist.png", dpi=150); plt.close()
+    plt.xticks(rotation=60, ha="right") 
+    plt.ylabel("boxes") 
+    plt.title("COCO128 - 20 most frequent classes")
+    plt.tight_layout()
+    plt.savefig("p1_class_hist.png", dpi=150)
+    plt.close()
     
     # --- sample images with boxes ---------------------------------------------
     fig, axes = plt.subplots(2, 3, figsize=(15, 9))
@@ -164,16 +172,18 @@ def loadExploreDataset(IMG_DIR: Path):
             x1, y1 = (cx - w / 2) * W, (cy - h / 2) * H          # centre form -> corner form, pixels
             ax.add_patch(patches.Rectangle((x1, y1), w * W, h * H, fill=False, lw=2, ec="lime"))
             ax.text(x1, y1, NAMES[c], color="black", backgroundcolor="lime", fontsize=7)
-    plt.tight_layout(); plt.savefig("p1_samples.png", dpi=150); plt.close()
+    plt.tight_layout() 
+    plt.savefig("p1_samples.png", dpi=150) 
+    plt.close()
 
-    # --- 80 / 10 / 10 split ------------------------------------------------------
+    # --- Data split ------------------------------------------------------
     random.Random('the meaning of life 42').shuffle(imagePaths)
-    n_tr = int(0.80 * len(imagePaths))
-    n_va = int(0.10 * len(imagePaths))
+    n_tr = int(PERCENT_TRAIN * len(imagePaths))
+    n_va = int(PERCENT_VAL * len(imagePaths))
     n_trva = n_tr + n_va
     splits = {
-        "train": imagePaths[:n_tr], 
-        "val": imagePaths[n_tr:n_trva], 
+        "train": imagePaths[:n_tr], # Start to n_tr
+        "val": imagePaths[n_tr:n_trva], # Between end of n_tr and start of n_va
         "test": imagePaths[n_trva:]
     }
     for name, files in splits.items():
@@ -195,7 +205,7 @@ def yolo():
     # yolov5su.pt = YOLOv5-small, COCO-pretrained, re-released by Ultralytics with an anchor-free head.
     # (The original anchor-based repo is github.com/ultralytics/yolov5 — `python train.py --weights yolov5s.pt`.)
     yolo_model = YOLO("YOLO_MODEL_PATH")
-    print(get_device(yolo_model))
+    print(get_device())
     DEVICE = "mps"        # Mac: "mps" | NVIDIA: 0 | fallback: "cpu"
     EPOCHS = 30
 
@@ -216,10 +226,12 @@ def yolo():
     """
 
     # --- evaluate on the held-out TEST split ---
+    # evaluateAndPlot(model, loader, lossFunction, DEVICE, runName="yolov5s_test", classNames, split, False, outPath)
     best = YOLO(ROOT / "runs" / "yolov5s_coco128" / "weights" / "best.pt")
     m = best.val(data=str(DATA), split="test", imgsz=640, device=DEVICE,
                 project=str(ROOT / "runs"), name="yolov5s_test", exist_ok=True)
     
+
     # print(f"YOLOv5s test | mAP@0.5 {m.box.map50:.3f}  mAP@0.5:0.95 {m.box.map:.3f}  "
     #     f"P {m.box.mp:.3f}  R {m.box.mr:.3f}  "
     #     f"speed/img: pre {m.speed['preprocess']:.1f} ms  infer {m.speed['inference']:.1f} ms  "
