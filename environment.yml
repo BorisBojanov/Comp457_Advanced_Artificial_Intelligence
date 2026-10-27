@@ -19,7 +19,9 @@ dependencies:
     - datasets       # WikiText-2 from Hugging Face
     - gensim         # pre-trained GloVe vectors
     - rouge-score    # ROUGE-L for captioning
-    - torchmetrics
+    - ultralytics      # YOLOv5/YOLOv8 trainer
+    - torchmetrics     # MeanAveragePrecision
+
   # PyTorch comes from conda-forge, NOT pip, so that it shares this
   # environment's single OpenMP runtime. The pip wheel bundles its own
   # copy of libomp; loading that alongside conda-forge numpy's libomp
@@ -36,4 +38,3 @@ dependencies:
   # solver pairs a compatible release.
   - pytorch=2.13.0
   - torchvision
-  - ultralytics

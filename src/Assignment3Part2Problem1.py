@@ -204,7 +204,7 @@ def yolo():
     """
     # yolov5su.pt = YOLOv5-small, COCO-pretrained, re-released by Ultralytics with an anchor-free head.
     # (The original anchor-based repo is github.com/ultralytics/yolov5 — `python train.py --weights yolov5s.pt`.)
-    yolo_model = YOLO("YOLO_MODEL_PATH")
+    yolo_model = YOLO(YOLO_MODEL_PATH)
     print(get_device())
     DEVICE = "mps"        # Mac: "mps" | NVIDIA: 0 | fallback: "cpu"
     EPOCHS = 30
