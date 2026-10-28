@@ -21,6 +21,7 @@ dependencies:
     - rouge-score    # ROUGE-L for captioning
     - ultralytics      # YOLOv5/YOLOv8 trainer
     - torchmetrics     # MeanAveragePrecision
+    - pydensecrf
 
   # PyTorch comes from conda-forge, NOT pip, so that it shares this
   # environment's single OpenMP runtime. The pip wheel bundles its own
