@@ -499,17 +499,17 @@ class pascalVOC(torch.utils.data.Dataset):
     def __init__(self, image_set, train) -> None:
         self.voc = VOCSegmentation(VOC_ROOT, year="2012", image_set=image_set, download=False)
 
-        # self.obj = [m.replace("SegmentationClass", "SegmentationObject") for m in self.voc.masks]
         self.obj = []
         for m in self.voc.masks:
             mask = m.replace("SegmentationClass", "SegmentationObject")
             self.obj.append(mask)
 
-        # geo = [v2.RandomHorizontalFlip(), v2.RandomPhotometricDistort(p=0.5)] if train else []
         geo = []
         if train:
-            thing = v2.RandomHorizontalFlip(), v2.RandomPhotometricDistort(p=0.5)
-            geo.append(thing)
+            thing1 = v2.RandomHorizontalFlip()
+            thing2 = v2.RandomPhotometricDistort(p=0.5)
+            geo.append(thing1)
+            geo.append(thing2)
 
         # (*) the unpacking operator
         self.tf = v2.Compose([
@@ -527,13 +527,11 @@ class pascalVOC(torch.utils.data.Dataset):
         img, cls = self.voc[i]
         cls, inst = np.array(cls), np.array(Image.open(self.obj[i]))
         
-        # ids = [k for k in np.unique(inst) if k not in (0, IGNORE)]
         ids = []
         for i in np.unique(inst):
             if i not in (0, IGNORE):
                 ids.append(i) 
 
-        # masks = torch.from_numpy(np.stack([inst == k for k in ids])) if ids else torch.zeros(0, *inst.shape, dtype=torch.bool)
         if ids:
             boolmasks = []
             # Create a list of boolean masks for each ID
