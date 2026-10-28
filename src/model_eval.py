@@ -828,7 +828,7 @@ def _rowFrom(prefix: str, result: dict) -> dict:
             if k != "num_classes" and isinstance(v, (int, float, np.number))}
 
 
-def saveCheckpoint(path, model, **meta) -> Path:
+def saveCheckpoint(path, model, /, **meta) -> Path:
     """torch.save({'state_dict': ..., **meta}). Extra keyword arguments (vocab, args, epoch)
     ride along so a checkpoint can be rebuilt without the training script."""
     path = Path(path)

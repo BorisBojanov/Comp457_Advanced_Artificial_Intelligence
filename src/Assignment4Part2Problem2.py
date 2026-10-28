@@ -49,6 +49,8 @@ import torch.nn.functional as F
 from PIL import Image
 from torch.utils.data import DataLoader, Dataset
 
+from model_eval import SequenceStep, fit, loadHistory, plotComparison, saveCheckpoint
+
 ROOT = Path(__file__).resolve().parents[1]
 DATA = ROOT / "data" / "flickr8k"
 IMG_DIR = DATA / "Flicker8k_Dataset"  # (sic) - the archive's own spelling
@@ -417,6 +419,24 @@ def caption_metrics(hyps: list[list[str]], refs: list[list[list[str]]]) -> dict:
 # ==========================================================================
 # 5. Training
 # ==========================================================================
+class CaptionStep(SequenceStep):
+    """Teacher forcing: feed w_<t, predict w_t, padding ignored. For the LSTM decoder the
+    doubly-stochastic attention regulariser is added to the training loss (not to validation)."""
+
+    def __init__(self, pad_id, att_reg=0.0):
+        super().__init__(ignore_index=pad_id, topk=(), perplexity=False,  # ppl of a label-smoothed loss misleads
+                         inputs=lambda b: (b[0], b[1][:, :-1]), targets=lambda b: b[1][:, 1:])
+        self.att_reg = att_reg
+
+    def __call__(self, model, batch, loss_fn, device):
+        out = super().__call__(model, batch, loss_fn, device)
+        if self.att_reg > 0 and model.training and getattr(model, "last_alphas", None) is not None:
+            out["loss"] = out["loss"] + self.att_reg * ((1 - model.last_alphas.sum(1)) ** 2).mean()
+        if not torch.isfinite(out["loss"]):
+            raise RuntimeError(f"training loss is {out['loss'].item()} - lower --lr or check features")
+        return out
+
+
 def train_one(tag, enc_name, dec_name, data, vocab, device, args):
     feats_tr, feats_va = data["train_feats"], data["val_feats"]
     regions = feats_tr.size(1)
@@ -434,62 +454,37 @@ def train_one(tag, enc_name, dec_name, data, vocab, device, args):
     sched = torch.optim.lr_scheduler.LambdaLR(
         opt, lambda s: min(1.0, (s + 1) / warm) * 0.5 * (1 + math.cos(math.pi * min(s, total) / total)))
     crit = nn.CrossEntropyLoss(ignore_index=vocab.stoi[PAD], label_smoothing=0.1)
+    step = CaptionStep(vocab.stoi[PAD], args.att_reg if dec_name == "lstm" else 0.0)
 
     # small fixed val subset for a per-epoch METEOR curve (cheap greedy decoding)
     n_mon = min(200, len(data["val"]))
     mon_refs = [data["caps"][n] for n in data["val"][:n_mon]]
+    meta = {"vocab": vocab.itos, "encoder": enc_name, "decoder": dec_name,
+            "regions": regions, "args": vars(args)}
 
-    hist = {k: [] for k in ("train_loss", "val_loss", "val_meteor", "val_bleu4", "lr")}
-    CKPT_DIR.mkdir(parents=True, exist_ok=True)
-    best = -1.0
-    n_params = sum(p.numel() for p in model.parameters())
-    print(f"\n=== {tag}: {n_params/1e6:.1f}M params | {len(train_ds):,} train pairs | lr {lr} | {device} ===")
-    for ep in range(1, args.epochs + 1):
-        t0 = time.time()
-        model.train()
-        tot, n = 0.0, 0
-        for f, cap in tl:
-            f, cap = f.to(device), cap.to(device)
-            inp, tgt = cap[:, :-1], cap[:, 1:]  # teacher forcing: feed w_<t, predict w_t
-            logits = model(f, inp)
-            loss = crit(logits.reshape(-1, logits.size(-1)), tgt.reshape(-1))
-            if dec_name == "lstm" and args.att_reg > 0:  # doubly-stochastic attention
-                loss = loss + args.att_reg * ((1 - model.last_alphas.sum(1)) ** 2).mean()
-            opt.zero_grad()
-            loss.backward()
-            nn.utils.clip_grad_norm_(model.parameters(), 5.0)
-            opt.step()
-            sched.step()
-            tot += loss.item() * f.size(0); n += f.size(0)
-        tr_loss = tot / n
-        if not math.isfinite(tr_loss):
-            raise RuntimeError(f"[{tag}] training loss is {tr_loss} - lower --lr or check features")
-
-        model.eval()
-        vtot, vn = 0.0, 0
-        with torch.no_grad():
-            for f, cap in vl:
-                f, cap = f.to(device), cap.to(device)
-                logits = model(f, cap[:, :-1])
-                vtot += crit(logits.reshape(-1, logits.size(-1)), cap[:, 1:].reshape(-1)).item() * f.size(0)
-                vn += f.size(0)
-        va_loss = vtot / vn
+    def caption_scores(model, epoch):
+        """Runs after each epoch's train/val pass: METEOR + BLEU-4, and a resumable last checkpoint."""
         hyps = caption_images(model, feats_va[:n_mon], vocab, device, beam=1)
         m = caption_metrics(hyps, mon_refs)
-        for k, v in (("train_loss", tr_loss), ("val_loss", va_loss), ("val_meteor", m["meteor"]),
-                     ("val_bleu4", m["bleu4"]), ("lr", opt.param_groups[0]["lr"])):
-            hist[k].append(v)
-        print(f"[{tag}] ep {ep:2d}/{args.epochs} | train {tr_loss:.3f} | val {va_loss:.3f} | "
-              f"val METEOR {m['meteor']:.3f} BLEU-4 {m['bleu4']:.3f} | {time.time()-t0:.0f}s "
-              f"| e.g. '{' '.join(hyps[0])}'")
+        print(f"    val METEOR {m['meteor']:.3f} BLEU-4 {m['bleu4']:.3f} | e.g. '{' '.join(hyps[0])}'")
+        saveCheckpoint(CKPT_DIR / f"{tag}_last.pt", model, epoch=epoch, **meta)  # resume / inspect
+        return {"val_meteor": m["meteor"], "val_bleu4": m["bleu4"]}
 
-        ck = {"state_dict": model.state_dict(), "vocab": vocab.itos, "encoder": enc_name,
-              "decoder": dec_name, "regions": regions, "args": vars(args), "epoch": ep, "history": hist}
-        torch.save(ck, CKPT_DIR / f"{tag}_last.pt")          # resume / inspect
-        if m["meteor"] > best:                                 # model selection on val METEOR
-            best = m["meteor"]
-            torch.save(ck, CKPT_DIR / f"{tag}_best.pt")
-    return hist
+    n_params = sum(p.numel() for p in model.parameters())
+    print(f"\n=== {tag}: {n_params/1e6:.1f}M params | {len(train_ds):,} train pairs | lr {lr} | {device} ===")
+    return fit(model, tl, vl, crit, opt, device, args.epochs, run_name=f"a4p2_{tag}", val_label="val",
+               out_dir=FIG_DIR, live=False, step=step, scheduler=sched, scheduler_per_batch=True,
+               clip=5.0, extra_eval=caption_scores, checkpoint=CKPT_DIR / f"{tag}_best.pt",
+               checkpoint_meta=meta, monitor_key="val_meteor", mode="max",  # model selection on val METEOR
+               panels=["loss", "meteor", "bleu4", "acc"])
+
+
+def load_history(tag, ck):
+    """Per-epoch curves of a finished run (written by fit); older checkpoints carried them inside."""
+    try:
+        return loadHistory(f"a4p2_{tag}", FIG_DIR)
+    except FileNotFoundError:
+        return ck["history"]
 
 
 def load_decoder(tag, device):
@@ -506,21 +501,6 @@ def load_decoder(tag, device):
 # ==========================================================================
 # Figures
 # ==========================================================================
-def plot_curves(histories, path):
-    fig, ax = plt.subplots(1, 2, figsize=(13, 4.5))
-    for tag, h in histories.items():
-        ep = range(1, len(h["train_loss"]) + 1)
-        line, = ax[0].plot(ep, h["train_loss"], "-o", ms=3, label=f"{tag} train")
-        ax[0].plot(ep, h["val_loss"], "--", color=line.get_color(), label=f"{tag} val")
-        ax[1].plot(ep, h["val_meteor"], "-o", ms=3, color=line.get_color(), label=tag)
-    ax[0].set(title="Cross-entropy loss (label-smoothed)", xlabel="epoch", ylabel="loss")
-    ax[1].set(title="Validation METEOR (greedy, 200 images)", xlabel="epoch", ylabel="METEOR")
-    for a in ax:
-        a.grid(alpha=0.3); a.legend(fontsize=7)
-    fig.tight_layout(); fig.savefig(path, dpi=150); plt.close(fig)
-    print(f"Saved {path}")
-
-
 def plot_examples(names, preds: dict, caps, path, n=6):
     import textwrap
 
@@ -612,7 +592,7 @@ def main():
                 histories[tag] = train_one(tag, e, d, data, vocab, device, args)
             if args.stage in ("all", "eval"):
                 model, vocab_m, ck = load_decoder(tag, device)
-                histories.setdefault(tag, ck["history"])
+                histories.setdefault(tag, load_history(tag, ck))
                 hyps = caption_images(model, test_feats, vocab_m, device, beam=args.beam)
                 refs = [caps[n] for n in splits["test"]]
                 results[tag] = caption_metrics(hyps, refs)
@@ -620,7 +600,11 @@ def main():
                 print(f"[{tag}] TEST (beam {args.beam}): " +
                       " | ".join(f"{k} {v:.3f}" for k, v in results[tag].items()))
 
-    plot_curves(histories, FIG_DIR / f"assignment4part2p2_curves{tag_sfx}.png")
+    fig = plotComparison(histories, panels=["loss", "meteor", "bleu4"],
+                         title="Assignment 4 P2 - Flickr8k captioning (METEOR / BLEU-4: greedy, 200 val images)",
+                         run_name=f"assignment4part2p2{tag_sfx}", out_dir=FIG_DIR)
+    plt.close(fig)
+    print(f"Saved {FIG_DIR / f'assignment4part2p2{tag_sfx}_comparison.png'}")
     if preds:
         rng = np.random.default_rng(7)
         pick = list(rng.choice(splits["test"], 6, replace=False))

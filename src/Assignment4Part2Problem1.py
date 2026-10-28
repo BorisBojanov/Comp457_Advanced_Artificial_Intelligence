@@ -29,7 +29,6 @@ import json
 import math
 import os
 import re
-import time
 import urllib.request
 from collections import Counter
 from pathlib import Path
@@ -42,6 +41,8 @@ import numpy as np
 import torch
 import torch.nn as nn
 from torch.utils.data import DataLoader, Dataset
+
+from model_eval import SequenceStep, evaluateLoader, fit, plotComparison
 
 # --------------------------------------------------------------------------
 # Paths & configuration
@@ -265,90 +266,22 @@ def build_model(name: str, emb: torch.Tensor, args) -> nn.Module:
 # --------------------------------------------------------------------------
 # 5. Training / evaluation
 # --------------------------------------------------------------------------
-def run_epoch(model, loader, criterion, device, optimizer=None, clip=1.0):
-    """One pass. Returns mean loss, perplexity, top-1 and top-5 accuracy."""
-    train = optimizer is not None
-    model.train(train)
-    tot_loss, tot_tok, top1, top5 = 0.0, 0, 0, 0
-    with torch.set_grad_enabled(train):
-        for x, y in loader:
-            x, y = x.to(device), y.to(device)
-            logits = model(x)
-            loss = criterion(logits.reshape(-1, logits.size(-1)), y.reshape(-1))
-            if train:
-                optimizer.zero_grad()
-                loss.backward()
-                nn.utils.clip_grad_norm_(model.parameters(), clip)  # tame exploding grads
-                optimizer.step()
-            n = y.numel()
-            tot_loss += loss.item() * n
-            tot_tok += n
-            k5 = logits.topk(5, dim=-1).indices
-            top1 += (k5[..., 0] == y).sum().item()
-            top5 += (k5 == y.unsqueeze(-1)).any(-1).sum().item()
-    mean = tot_loss / tot_tok
-    return {"loss": mean, "ppl": math.exp(min(mean, 20)), "acc": top1 / tot_tok, "top5": top5 / tot_tok}
-
-
 def train_model(name, model, loaders, device, args, meta):
+    """Train with model_eval.fit: SequenceStep scores loss / perplexity / top-1 / top-5 per epoch,
+    the best validation checkpoint is kept and restored, curves + history go to data/figures/."""
     criterion = nn.CrossEntropyLoss()  # categorical cross-entropy over the vocabulary
     optimizer = torch.optim.AdamW(model.parameters(), lr=args.lr, weight_decay=0.01)
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, factor=0.5, patience=1)
-    history = {k: [] for k in ("train_loss", "val_loss", "train_ppl", "val_ppl",
-                               "train_acc", "val_acc", "val_top5", "lr")}
-    best, bad = float("inf"), 0
-    CKPT_DIR.mkdir(parents=True, exist_ok=True)
-    ckpt_path = CKPT_DIR / f"{name}_best.pt"
     n_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"\n=== Training {name.upper()} ({n_params/1e6:.1f}M trainable params) on {device} ===")
 
-    for epoch in range(1, args.epochs + 1):
-        t0 = time.time()
-        tr = run_epoch(model, loaders["train"], criterion, device, optimizer)
-        va = run_epoch(model, loaders["validation"], criterion, device)
-        scheduler.step(va["loss"])
-        for k, v in (("train_loss", tr["loss"]), ("val_loss", va["loss"]),
-                     ("train_ppl", tr["ppl"]), ("val_ppl", va["ppl"]),
-                     ("train_acc", tr["acc"]), ("val_acc", va["acc"]),
-                     ("val_top5", va["top5"]), ("lr", optimizer.param_groups[0]["lr"])):
-            history[k].append(v)
-        print(f"[{name}] epoch {epoch:2d}/{args.epochs} | train loss {tr['loss']:.3f} "
-              f"ppl {tr['ppl']:.1f} | val loss {va['loss']:.3f} ppl {va['ppl']:.1f} "
-              f"acc {va['acc']:.3f} top5 {va['top5']:.3f} | {time.time()-t0:.0f}s")
-        if va["loss"] < best:  # checkpoint the best validation model
-            best, bad = va["loss"], 0
-            torch.save({"state_dict": model.state_dict(), "meta": meta, "model": name,
-                        "args": vars(args), "epoch": epoch}, ckpt_path)
-        else:
-            bad += 1
-            if bad >= args.patience:
-                print(f"[{name}] early stopping (no val improvement for {bad} epochs)")
-                break
-
-    model.load_state_dict(torch.load(ckpt_path, map_location=device)["state_dict"])
-    return history
-
-
-def plot_curves(histories: dict, path: Path):
-    fig, axes = plt.subplots(1, 3, figsize=(16, 4.5))
-    for name, h in histories.items():
-        ep = range(1, len(h["train_loss"]) + 1)
-        axes[0].plot(ep, h["train_loss"], "-o", ms=3, label=f"{name} train")
-        axes[0].plot(ep, h["val_loss"], "--s", ms=3, label=f"{name} val")
-        axes[1].plot(ep, h["train_ppl"], "-o", ms=3, label=f"{name} train")
-        axes[1].plot(ep, h["val_ppl"], "--s", ms=3, label=f"{name} val")
-        axes[2].plot(ep, h["val_acc"], "-o", ms=3, label=f"{name} val top-1")
-        axes[2].plot(ep, h["val_top5"], "--s", ms=3, label=f"{name} val top-5")
-    for ax, title, yl in zip(axes, ("Cross-entropy loss", "Perplexity", "Validation accuracy"),
-                             ("loss", "perplexity", "accuracy")):
-        ax.set_title(title); ax.set_xlabel("epoch"); ax.set_ylabel(yl)
-        ax.grid(alpha=0.3); ax.legend(fontsize=8)
-    axes[1].set_yscale("log")
-    fig.suptitle("Assignment 4 P1 - next-word prediction on WikiText-2")
-    fig.tight_layout()
-    fig.savefig(path, dpi=150)
-    plt.close(fig)
-    print(f"Saved curves -> {path}")
+    return fit(model, loaders["train"], loaders["validation"], criterion, optimizer, device, args.epochs,
+               run_name=f"a4p1_{name}{'_quick' if args.quick else ''}", val_label="val",
+               out_dir=FIG_DIR, live=False, step=SequenceStep(topk=(5,)),
+               scheduler=scheduler, clip=1.0,  # clip tames exploding grads
+               checkpoint=CKPT_DIR / f"{name}_best.pt",
+               checkpoint_meta={"meta": meta, "model": name, "args": vars(args)},
+               monitor_key="val_loss", patience=args.patience)
 
 
 # --------------------------------------------------------------------------
@@ -496,7 +429,8 @@ def main():
         set_seed()
         model = build_model(name, emb, args).to(device)
         histories[name] = train_model(name, model, loaders, device, args, meta)
-        test = run_epoch(model, loaders["test"], criterion, device)
+        test = evaluateLoader(model, loaders["test"], criterion, device, step=SequenceStep(topk=(5,)))
+        test = {"loss": test["loss"], "ppl": test["ppl"], "acc": test["accuracy"], "top5": test["top5"]}
         results[name] = test
         models[name] = model
         print(f"[{name}] TEST loss {test['loss']:.3f} | ppl {test['ppl']:.1f} | "
@@ -505,7 +439,11 @@ def main():
     # --- report artefacts --------------------------------------------------
     FIG_DIR.mkdir(parents=True, exist_ok=True)
     tag = "_quick" if args.quick else ""
-    plot_curves(histories, FIG_DIR / f"assignment4part2p1_curves{tag}.png")
+    fig = plotComparison(histories, panels=["loss", "ppl", "acc", "top5"],
+                         title="Assignment 4 P1 - next-word prediction on WikiText-2",
+                         run_name=f"assignment4part2p1{tag}", out_dir=FIG_DIR)
+    plt.close(fig)
+    print(f"Saved curves -> {FIG_DIR / f'assignment4part2p1{tag}_comparison.png'}")
 
     # top-k predictions for a few test inputs (real test-set contexts + custom prompts)
     test_ids = vocab.encode(tokens["test"])
