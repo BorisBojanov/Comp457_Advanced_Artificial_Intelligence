@@ -1,0 +1,63 @@
+Using device: mps
+Generating test split:   0%|          | 0/4358 [00:00<?, ? examples/s]Generating test split: 100%|██████████| 4358/4358 [00:00<00:00, 183896.67 examples/s]
+Generating train split:   0%|          | 0/36718 [00:00<?, ? examples/s]Generating train split: 100%|██████████| 36718/36718 [00:00<00:00, 1616102.15 examples/s]
+Generating validation split:   0%|          | 0/3760 [00:00<?, ? examples/s]Generating validation split: 100%|██████████| 3760/3760 [00:00<00:00, 1271103.65 examples/s]
+Words -> train: 1000000 | validation: 177009 | test: 198980
+First 20 cleaned words: valkyria chronicles iii senj no valkyria unrecorded chronicles japanese lit valkyria of the battlefield commonly referred to as valkyria chronicles
+Vocabulary size: 10000
+N-gram pairs -> train: 921030 | validation: 157380 | test: 174781
+Loading GloVe vectors from /Users/boris/Documents/CodingStuff/Python_Stuff/Comp457_Advanced_Artificial_Intelligence/data/glove/glove.6B.100d.txt
+GloVe found 9907 of 10000 vocabulary words
+
+========== Training LSTM ==========
+Epoch 1/5 | train loss 6.020, acc 0.151, ppl 411.7 | val loss 5.610, acc 0.174, ppl 273.0
+Epoch 2/5 | train loss 5.317, acc 0.190, ppl 203.7 | val loss 5.470, acc 0.185, ppl 237.5
+Epoch 3/5 | train loss 4.987, acc 0.208, ppl 146.5 | val loss 5.451, acc 0.189, ppl 233.0
+Epoch 4/5 | train loss 4.738, acc 0.223, ppl 114.2 | val loss 5.479, acc 0.189, ppl 239.6
+Epoch 5/5 | train loss 4.528, acc 0.236, ppl 92.6 | val loss 5.529, acc 0.189, ppl 251.9
+
+========== Training Transformer ==========
+Epoch 1/5 | train loss 6.039, acc 0.150, ppl 419.3 | val loss 5.646, acc 0.173, ppl 283.3
+Epoch 2/5 | train loss 5.427, acc 0.182, ppl 227.5 | val loss 5.499, acc 0.181, ppl 244.6
+Epoch 3/5 | train loss 5.180, acc 0.194, ppl 177.7 | val loss 5.465, acc 0.183, ppl 236.4
+Epoch 4/5 | train loss 5.018, acc 0.202, ppl 151.1 | val loss 5.463, acc 0.185, ppl 235.9
+Epoch 5/5 | train loss 4.898, acc 0.207, ppl 134.0 | val loss 5.479, acc 0.187, ppl 239.7
+
+========== Test set results ==========
+LSTM: loss 5.514 | perplexity 248.1 | top-1 accuracy 0.191 | top-5 accuracy 0.351
+Transformer: loss 5.467 | perplexity 236.8 | top-1 accuracy 0.189 | top-5 accuracy 0.352
+
+========== Top-5 predictions on test examples ==========
+
+Context: 'philip ridley play mercury fur'   (true next word: 'which')
+  LSTM: and (0.20), is (0.05), trade (0.02), in (0.02), as (0.02)
+  Transformer: trade (0.28), coat (0.06), and (0.05), lining (0.02), s (0.02)
+
+Context: 'winds in emperor xuanzong was'   (true next word: 'forced')
+  LSTM: the (0.05), a (0.03), built (0.02), killed (0.02), forced (0.02)
+  Transformer: a (0.06), the (0.05), also (0.03), built (0.02), not (0.02)
+
+Context: 'and floodwaters covered the greens'   (true next word: 'on')
+  LSTM: ledge (0.99), island (0.00), and (0.00), party (0.00), cruiser (0.00)
+  Transformer: ledge (0.99), line (0.00), and (0.00), assembly (0.00), bowl (0.00)
+
+Context: 'the palate another pair of'   (true next word: 'holes')
+  LSTM: legs (0.08), the (0.04), transits (0.04), inch (0.02), four (0.02)
+  Transformer: legs (0.09), the (0.08), a (0.03), shiva (0.03), inch (0.01)
+Saved training curves to /Users/boris/Documents/CodingStuff/Python_Stuff/Comp457_Advanced_Artificial_Intelligence/src/Assignment4_simple/outputs/problem1_training_curves.png
+
+========== Interactive demo ==========
+Type a prompt like: the weather is
+Type quit to stop.
+
+Your prompt:   LSTM top-5 next words: a (0.03), in (0.02), used (0.02), also (0.02), based (0.02)
+  LSTM continues: the weather is a tropical depression in the
+  Transformer top-5 next words: a (0.10), the (0.07), located (0.04), not (0.04), also (0.03)
+  Transformer continues: the weather is a small number of the
+
+Your prompt:   LSTM top-5 next words: the (0.12), a (0.05), january (0.04), in (0.03), april (0.03)
+  LSTM continues: he was born in the united states in the
+  Transformer top-5 next words: the (0.13), and (0.05), november (0.04), a (0.04), april (0.03)
+  Transformer continues: he was born in the city of london and
+
+Your prompt: 

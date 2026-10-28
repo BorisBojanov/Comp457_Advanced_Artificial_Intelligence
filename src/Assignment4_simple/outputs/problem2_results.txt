@@ -1,0 +1,5 @@
+Model                         Val loss   BLEU-1   BLEU-2   BLEU-4
+ResNet50 + LSTM                  2.768    0.594    0.415    0.188
+ResNet50 + Transformer           2.924    0.581    0.391    0.164
+InceptionV3 + LSTM               2.792    0.561    0.375    0.156
+InceptionV3 + Transformer        2.885    0.576    0.387    0.162

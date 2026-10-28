@@ -1,0 +1,90 @@
+Using device: mps
+Images -> train: 6000 | validation: 1000 | test: 1000
+Vocabulary size: 2533
+Example caption: a black dog is running after a white dog in the snow
+As numbers:      [1, 4, 16, 10, 8, 33, 258, 4, 15, 10, 5, 6, 43, 2, 0, 0, 0, 0, 0, 0, 0, 0]
+Extracting ResNet50 features for 8000 images (only happens once)...
+Downloading: "https://download.pytorch.org/models/resnet50-11ad3fa6.pth" to /Users/boris/.cache/torch/hub/checkpoints/resnet50-11ad3fa6.pth
+  0%|          | 0.00/97.8M [00:00<?, ?B/s]  2%|▏         | 2.38M/97.8M [00:00<00:04, 24.6MB/s] 14%|█▎        | 13.4M/97.8M [00:00<00:01, 77.5MB/s] 25%|██▌       | 24.8M/97.8M [00:00<00:00, 96.4MB/s] 39%|███▉      | 38.4M/97.8M [00:00<00:00, 114MB/s]  55%|█████▍    | 53.4M/97.8M [00:00<00:00, 128MB/s] 71%|███████   | 69.1M/97.8M [00:00<00:00, 140MB/s] 87%|████████▋ | 85.1M/97.8M [00:00<00:00, 149MB/s]100%|██████████| 97.8M/97.8M [00:00<00:00, 129MB/s]
+  batch 0/125
+  batch 20/125
+  batch 40/125
+  batch 60/125
+  batch 80/125
+  batch 100/125
+  batch 120/125
+
+========== Training ResNet50 + LSTM ==========
+Epoch 1/10 | train loss 4.055 | val loss 3.388
+Epoch 2/10 | train loss 3.175 | val loss 3.036
+Epoch 3/10 | train loss 2.851 | val loss 2.880
+Epoch 4/10 | train loss 2.648 | val loss 2.797
+Epoch 5/10 | train loss 2.490 | val loss 2.770
+Epoch 6/10 | train loss 2.359 | val loss 2.747
+Epoch 7/10 | train loss 2.243 | val loss 2.732
+Epoch 8/10 | train loss 2.140 | val loss 2.747
+Epoch 9/10 | train loss 2.042 | val loss 2.754
+Epoch 10/10 | train loss 1.949 | val loss 2.768
+ResNet50 + LSTM TEST  BLEU-1 0.594 | BLEU-2 0.415 | BLEU-4 0.188
+  first test caption: a brown dog is running across a snowy hill with a red leash in his mouth
+
+========== Training ResNet50 + Transformer ==========
+Epoch 1/10 | train loss 3.870 | val loss 3.204
+Epoch 2/10 | train loss 3.021 | val loss 2.963
+Epoch 3/10 | train loss 2.751 | val loss 2.883
+Epoch 4/10 | train loss 2.582 | val loss 2.856
+Epoch 5/10 | train loss 2.462 | val loss 2.847
+Epoch 6/10 | train loss 2.372 | val loss 2.861
+Epoch 7/10 | train loss 2.295 | val loss 2.893
+Epoch 8/10 | train loss 2.235 | val loss 2.899
+Epoch 9/10 | train loss 2.181 | val loss 2.896
+Epoch 10/10 | train loss 2.136 | val loss 2.924
+ResNet50 + Transformer TEST  BLEU-1 0.581 | BLEU-2 0.391 | BLEU-4 0.164
+  first test caption: a dog is running through the snow
+Extracting InceptionV3 features for 8000 images (only happens once)...
+Downloading: "https://download.pytorch.org/models/inception_v3_google-0cc3c7bd.pth" to /Users/boris/.cache/torch/hub/checkpoints/inception_v3_google-0cc3c7bd.pth
+  0%|          | 0.00/104M [00:00<?, ?B/s]  2%|▏         | 2.12M/104M [00:00<00:04, 21.8MB/s] 11%|█         | 11.0M/104M [00:00<00:01, 62.8MB/s] 21%|██        | 21.5M/104M [00:00<00:01, 83.8MB/s] 31%|███▏      | 32.6M/104M [00:00<00:00, 96.4MB/s] 42%|████▏     | 44.1M/104M [00:00<00:00, 104MB/s]  54%|█████▍    | 56.6M/104M [00:00<00:00, 113MB/s] 67%|██████▋   | 69.4M/104M [00:00<00:00, 119MB/s] 80%|███████▉  | 83.0M/104M [00:00<00:00, 127MB/s] 93%|█████████▎| 96.2M/104M [00:00<00:00, 130MB/s]100%|██████████| 104M/104M [00:00<00:00, 113MB/s] 
+  batch 0/125
+  batch 20/125
+  batch 40/125
+  batch 60/125
+  batch 80/125
+  batch 100/125
+  batch 120/125
+
+========== Training InceptionV3 + LSTM ==========
+Epoch 1/10 | train loss 4.091 | val loss 3.475
+Epoch 2/10 | train loss 3.312 | val loss 3.182
+Epoch 3/10 | train loss 3.048 | val loss 3.025
+Epoch 4/10 | train loss 2.876 | val loss 2.937
+Epoch 5/10 | train loss 2.740 | val loss 2.883
+Epoch 6/10 | train loss 2.631 | val loss 2.835
+Epoch 7/10 | train loss 2.535 | val loss 2.814
+Epoch 8/10 | train loss 2.447 | val loss 2.808
+Epoch 9/10 | train loss 2.367 | val loss 2.791
+Epoch 10/10 | train loss 2.290 | val loss 2.792
+InceptionV3 + LSTM TEST  BLEU-1 0.561 | BLEU-2 0.375 | BLEU-4 0.156
+  first test caption: a dog is running through the snow
+
+========== Training InceptionV3 + Transformer ==========
+Epoch 1/10 | train loss 4.031 | val loss 3.296
+Epoch 2/10 | train loss 3.137 | val loss 3.022
+Epoch 3/10 | train loss 2.872 | val loss 2.939
+Epoch 4/10 | train loss 2.713 | val loss 2.918
+Epoch 5/10 | train loss 2.599 | val loss 2.862
+Epoch 6/10 | train loss 2.515 | val loss 2.876
+Epoch 7/10 | train loss 2.440 | val loss 2.869
+Epoch 8/10 | train loss 2.381 | val loss 2.889
+Epoch 9/10 | train loss 2.328 | val loss 2.888
+Epoch 10/10 | train loss 2.283 | val loss 2.885
+InceptionV3 + Transformer TEST  BLEU-1 0.576 | BLEU-2 0.387 | BLEU-4 0.162
+  first test caption: a dog is running through the snow
+
+========== Results on the test set ==========
+Model                         Val loss   BLEU-1   BLEU-2   BLEU-4
+ResNet50 + LSTM                  2.768    0.594    0.415    0.188
+ResNet50 + Transformer           2.924    0.581    0.391    0.164
+InceptionV3 + LSTM               2.792    0.561    0.375    0.156
+InceptionV3 + Transformer        2.885    0.576    0.387    0.162
+Saved training curves to /Users/boris/Documents/CodingStuff/Python_Stuff/Comp457_Advanced_Artificial_Intelligence/src/Assignment4_simple/outputs/problem2_training_curves.png
+Saved example captions to /Users/boris/Documents/CodingStuff/Python_Stuff/Comp457_Advanced_Artificial_Intelligence/src/Assignment4_simple/outputs/problem2_example_captions.png
